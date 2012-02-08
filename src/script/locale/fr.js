@@ -146,6 +146,13 @@ GeoExt.Lang.add("fr", {
         popupTitle: "Info sur l'objet"
     },
 
+
+    "gxp.plugins.WMSGetAndSetFeatureInfo.prototype": {
+        infoActionTip: "Récupérer les attributs des objets",
+        popupTitle: "Info sur l'objet",
+        saveFeatureText: "Sauver"
+    },
+
     "gxp.plugins.Zoom.prototype": {
         zoomInMenuText: "Zoom avant",
         zoomOutMenuText: "Zoom arrière",
