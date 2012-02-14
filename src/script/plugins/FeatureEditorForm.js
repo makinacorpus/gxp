@@ -6,6 +6,10 @@
  * of the license.
  */
 
+/**
+ * @requires GeoExt/widgets/form.js
+ */
+
 /** api: (define)
  *  module = gxp.plugins
  *  class = FeatureEditorForm
@@ -40,7 +44,9 @@ gxp.plugins.FeatureEditorForm = Ext.extend(Ext.FormPanel, {
      *  ``Object``
      *  An object with as keys the field names, which will provide the ability
      *  to override the xtype that GeoExt.form created by default based on the
-     *  schema.
+     *  schema. When using a combo xtype, comboStoreData can be used to fill up
+     *  the store of the combobox. 
+     *  Example is : [['value1', 'display1'], ['value2', 'display2']]
      */
     fieldConfig: null,
 
@@ -82,7 +88,7 @@ gxp.plugins.FeatureEditorForm = Ext.extend(Ext.FormPanel, {
         this.defaults = Ext.apply(this.defaults || {}, {disabled: true});
         this.listeners = {
             clientvalidation: function(panel, valid) {
-                if (valid) {
+                if (valid && this.getForm().isDirty()) {
                     this.featureEditor.setFeatureState(this.featureEditor.getDirtyState());
                 }
             },
@@ -127,12 +133,30 @@ gxp.plugins.FeatureEditorForm = Ext.extend(Ext.FormPanel, {
                 fieldCfg.fieldLabel = this.propertyNames ? (this.propertyNames[name] || fieldCfg.fieldLabel) : fieldCfg.fieldLabel;
                 fieldCfg.value = this.feature.attributes[name];
                 if (this.fieldConfig && this.fieldConfig[name]) {
-                    fieldCfg = Ext.apply(fieldCfg, this.fieldConfig[name]);
+                    Ext.apply(fieldCfg, this.fieldConfig[name]);
+                }
+                if (fieldCfg.value && fieldCfg.xtype == "checkbox") {
+                    fieldCfg.checked = Boolean(fieldCfg.value);
+                }
+                if (fieldCfg.value && fieldCfg.xtype == "gxp_datefield") {
+                    fieldCfg.value = new Date(fieldCfg.value*1000);
                 }
                 if (fieldCfg.value && fieldCfg.xtype == "datefield") {
                     var dateFormat = "Y-m-d";
                     fieldCfg.format = dateFormat;
                     fieldCfg.value = Date.parseDate(fieldCfg.value.replace(/Z$/, ""), dateFormat);
+                }
+                if (fieldCfg.xtype === "combo") {
+                    Ext.applyIf(fieldCfg, {
+                        store: new Ext.data.ArrayStore({
+                            fields: ['id', 'value'],
+                            data: fieldCfg.comboStoreData
+                        }),
+                        displayField: 'value',
+                        valueField: 'id',
+                        mode: 'local',
+                        triggerAction: 'all'
+                    });
                 }
                 fields[lower] = fieldCfg;
             }, this);

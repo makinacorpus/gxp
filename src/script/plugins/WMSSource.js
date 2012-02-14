@@ -7,14 +7,18 @@
  */
 
 /**
+ * @requires util.js
  * @requires plugins/LayerSource.js
  * @requires OpenLayers/Layer/WMS.js
  * @requires OpenLayers/Format/WMSCapabilities/v1_1_0.js
  * @requires OpenLayers/Format/WMSCapabilities/v1_1_1.js
  * @requires OpenLayers/Format/WMSCapabilities/v1_3_0.js
+ * @requires OpenLayers/Protocol/WFS/v1_1_0.js
  * @requires GeoExt/data/WMSCapabilitiesReader.js
  * @requires GeoExt/data/WMSCapabilitiesStore.js
  * @requires GeoExt/data/WMSDescribeLayerStore.js
+ * @requires GeoExt/data/AttributeReader.js
+ * @requires GeoExt/data/AttributeStore.js
  */
 
 /**
@@ -551,9 +555,9 @@ gxp.plugins.WMSSource = Ext.extend(gxp.plugins.LayerSource, {
 
             var Record = GeoExt.data.LayerRecord.create(fields);
             record = new Record(data, layer.id);
+            record.json = config;
 
         }
-        record.json = config; 
         return record;
     },
     

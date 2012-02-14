@@ -7,8 +7,21 @@
  */
 
 /**
+ * @requires util.js
  * @requires widgets/tips/RangeSliderTip.js
  * @requires widgets/FeatureEditPopup.js
+ * @requires OpenLayers/Format/SLD/v1_0_0.js
+ * @requires OpenLayers/Renderer/SVG.js
+ * @requires OpenLayers/Renderer/VML.js
+ * @requires OpenLayers/Renderer/Canvas.js
+ * @requires OpenLayers/Layer/Vector.js
+ * @requires OpenLayers/Strategy/BBOX.js
+ * @requires OpenLayers/Filter/Logical.js
+ * @requires OpenLayers/Filter/Comparison.js
+ * @requires OpenLayers/Protocol/WFS/v1_1_0.js
+ * @requires OpenLayers/BaseTypes/Date.js
+ * @requires OpenLayers/BaseTypes/LonLat.js
+ * @requires OpenLayers/Filter/Spatial.js
  */
 
 /** api: (define)
@@ -22,6 +35,8 @@ Ext.namespace("gxp");
 window.Timeline && window.SimileAjax && (function() {
     SimileAjax.History.enabled = false;
 
+    Timeline._Band.prototype._onDblClick = Ext.emptyFn;
+
     Timeline.DefaultEventSource.prototype.remove = function(id) {
         this._events.remove(id);
     };
@@ -29,6 +44,16 @@ window.Timeline && window.SimileAjax && (function() {
         var evt = this._idToEvent[id];
         this._events.remove(evt);
         delete this._idToEvent[id];
+    };
+    Timeline._Band.prototype.zoom = function(zoomIn, x, y, target) {
+        if (!this._zoomSteps) {
+            // zoom disabled
+            return;
+        }
+        var center = this.getCenterVisibleDate();
+        var netIntervalChange = this._ether.zoom(zoomIn);
+        this._etherPainter.zoom(netIntervalChange);
+        this.setCenterVisibleDate(center);
     };
 })();
 
@@ -39,11 +64,30 @@ window.Timeline && window.SimileAjax && (function() {
  */
 gxp.TimelinePanel = Ext.extend(Ext.Panel, {
 
+    /** api: config[featureEditor]
+     *  ``gxp.plugins.FeatureEditor``
+     */
+
+    /** private: property[featureManager]
+     *  ``gxp.plugins.FeatureManager``
+     */
+
     /** api: config[timeInfoEndpoint]
      *  ``String``
      *  url to use to get time info about a certain layer.
      */
     timeInfoEndpoint: "/maps/time_info.json?",
+
+    /** api: config[annotationConfig]
+     *  ``Object`` Configuration object for the integration of annotations
+     *  with the timeline.
+     */
+    annotationConfig: {
+        startTimeAttr: 'start_time',
+        endTimeAttr: 'end_time',
+        filterAttr: 'in_timeline',
+        mapFilterAttr: 'in_map'
+    },
     
     /** api: config[viewer]
      *  ``gxp.Viewer``
@@ -108,9 +152,11 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
      *   * timeAttr - {String}
      *   * startTimeAttr - {String}
      *   * endTimeAttr - {String}
+     *   * filterAttr - {String}
      *   * visible - {Boolean}
      *   * timeFilter - {OpenLayers.Filter}
      *   * sldFilter - {OpenLayers.Filter}
+     *   * clientSideFilter - {OpenLayers.Filter}
      *  
      */
     
@@ -152,21 +198,49 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
         this.items = [{
             region: "west",
             xtype: "container",
-            layout: "fit",
+            layout: "vbox",
             margins: "10 5",
             width: 20,
             items: [{
+                xtype: "panel",
+                margins: "3 1",
+                cls: "x-tool x-tool-minus",
+                listeners: {
+                    afterrender: function(c){ 
+                        c.getEl().on('click', function() {
+                            var value = this.rangeSlider.getValue();
+                            this.rangeSlider.setValue(0, value+10, true, true);
+                        }, this);
+                    },
+                    scope: this
+                }
+           }, {
                 xtype: "slider",
                 ref: "../rangeSlider",
                 vertical: true,
+                flex: 1,
                 value: 25,
                 minValue: 1,
                 maxValue: 100,
                 listeners: {
+                    "change": this.onChange,
                     "changecomplete": this.onChangeComplete,
                     scope: this
                 },
                 plugins: [new gxp.slider.RangeSliderTip()]
+            }, {
+                xtype: "panel",
+                margins: "3 1",
+                cls: "x-tool x-tool-plus",
+                listeners: {
+                    afterrender: function(c){ 
+                        c.getEl().on('click', function() {
+                            var value = this.rangeSlider.getValue();
+                            this.rangeSlider.setValue(0, value-10, true, true);
+                        }, this);
+                    },
+                    scope: this
+                }
             }]
         }, this.timelineContainer
         ];
@@ -177,10 +251,10 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
             this.bindViewer(this.initialConfig.viewer);
         }
 
-        // we are binding with a feature manager to get notes/annotations
-        if (this.initialConfig.featureManager) {
-            delete this.featureManager;
-            this.bindFeatureManager(this.initialConfig.featureManager);
+        // we are binding with a feature editor to get notes/annotations
+        if (this.initialConfig.featureEditor) {
+            delete this.featureEditor;
+            this.bindFeatureEditor(this.initialConfig.featureEditor);
         }
 
         // we are binding with the playback tool to get updates on ranges
@@ -200,6 +274,26 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
         }
 
         gxp.TimelinePanel.superclass.initComponent.call(this); 
+    },
+
+    /**
+     * private: method[onChange]
+     *  :arg slider: ``Ext.Slider``
+     *  :arg value: ``Float``
+     *
+     *  Event listener for when the vertical slider is moved. Update the
+     *  range slider's tooltip.
+     */
+    onChange: function(slider, value, thumb) {
+        // TODO this logic needs to be more centralized, it's now in several places
+        var range = this.playbackTool.playbackToolbar.control.range;
+        range = this.calculateNewRange(range, value);
+        var start = new Date(range[0].getTime() - this.bufferFraction * (range[1] - range[0]));
+        var end = new Date(range[1].getTime() + this.bufferFraction * (range[1] - range[0]));
+        // don't go beyond the original range
+        start = new Date(Math.max(this.originalRange[0], start));
+        end = new Date(Math.min(this.originalRange[1], end));
+        this.updateRangeSlider([start, end]);
     },
 
     /**
@@ -246,12 +340,13 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
      *  :arg item: ``Ext.Menu.CheckItem``
      *  :arg checked: ``Boolean``
      *  :arg record: ``GeoExt.data.LayerRecord``
+     *  :arg clear: ``Boolean``
      *
      *  Change the visibility for a layer which is shown in the timeline.
      */
-    setLayerVisibility: function(item, checked, record) {
+    setLayerVisibility: function(item, checked, record, clear) {
         var keyToMatch = this.getKey(record);
-        this.clearEventsForKey(keyToMatch);
+        (clear !== false) && this.clearEventsForKey(keyToMatch);
         Ext.apply(this.layerLookup[keyToMatch], {
             visible: checked
         });
@@ -276,6 +371,11 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
     applyFilter: function(record, filter, checked) {
         var key = this.getKey(record);
         var layer = this.layerLookup[key].layer;
+        if (checked) {
+            this.layerLookup[key].clientSideFilter = filter;
+        } else {
+            delete this.layerLookup[key].clientSideFilter;
+        }
         var filterMatcher = function(evt) {
             var fid = evt.getProperty("fid");
             if (evt.getProperty("key") === key) {
@@ -337,7 +437,11 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
             this.destroyPopup();
             // if annotations, show feature editor
             if (!layer.protocol) {
-                layer.events.triggerEvent("featureselected", {feature: feature});
+                if (this.featureEditor) { 
+                    this.featureEditor._forcePopupForNoGeometry = true;
+                    layer.events.triggerEvent("featureselected", {feature: feature});
+                    delete this.featureEditor._forcePopupForNoGeometry;
+                }
             } else {
                 var centroid = feature.geometry.getCentroid();
                 var map = this.viewer.mapPanel.map;
@@ -361,26 +465,28 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
     },
 
     /**
-     * private: method[bindFeatureManager]
-     *  :arg featureManager: ``gxp.plugins.FeatureManager``
+     * private: method[bindFeatureEditor]
+     *  :arg featureEditor: ``gxp.plugins.FeatureEditor``
      *  
-     *  Bind with a feature manager to have notes show up in the timeline.
+     *  Bind with a feature editor to have notes show up in the timeline.
      */
-    bindFeatureManager: function(featureManager) {
-        this.featureManager = featureManager;
+    bindFeatureEditor: function(featureEditor) {
+        this.featureEditor = featureEditor;
+        this.featureManager = featureEditor.getFeatureManager();
         this.featureManager.on("layerchange", this.onLayerChange, this);
     },
 
     /**
-     * private: method[unbindFeatureManager]
+     * private: method[unbindFeatureEditor]
      *  
-     *  Unbind with a feature manager
+     *  Unbind with a feature editor and its associated feature manager.
      */
-    unbindFeatureManager: function() {
+    unbindFeatureEditor: function() {
         if (this.featureManager) {
             this.featureManager.un("layerchange", this.onLayerChange, this);
             this.featureManager = null;
         }
+        this.featureEditor = null;
     },
 
     /**
@@ -415,14 +521,19 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
         var key = this.getKey(record);
         var titleAttr = this.guessTitleAttribute(schema);
         var layer = this.featureManager.featureLayer;
-        this.layerLookup[key] = {
-            startTimeAttr: 'start_time',
-            endTimeAttr: 'end_time',
+        this.layerLookup[key] = Ext.apply({
             titleAttr: titleAttr,
             icon: Timeline.urlPrefix + "/images/note.png",
             layer: layer,
             visible: true
-        };
+        }, this.annotationConfig);
+        this.featureManager.on("query", function(tool, store) {
+            var features = [];
+            store.each(function(record) {
+                features.push(record.getFeature());
+            });
+            this.addFeatures(key, features);
+        }, this, {single: true});
         if (this.featureManager.featureStore) {
             // we cannot use the featureLayer's events here, since features
             // will be added without attributes
@@ -431,7 +542,7 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
         if (layer) {
             layer.events.on({
                 "visibilitychanged": function(evt) {
-                    this.setLayerVisibility(null, evt.object.getVisibility(), record);
+                    this.setLayerVisibility(null, evt.object.getVisibility(), record, false);
                 },
                 scope: this
             });
@@ -515,7 +626,7 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
      *  Create the Simile timeline object.
      */
     createTimeline: function(range) {
-        if (!this.rendered) {
+        if (!this.rendered || (this.timelineContainer.el.getSize().width === 0 && this.timelineContainer.el.getSize().height === 0)) {
             return;
         }
         var theme = Timeline.ClassicTheme.create();
@@ -577,7 +688,6 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
                 theme: theme
             })
         ];
-
         this.timeline = Timeline.create(
             this.timelineContainer.el.dom, 
             bandInfos, 
@@ -611,7 +721,9 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
             this.unbindViewer();
         }
         this.viewer = viewer;
-        this.layerLookup = {};
+        if (!this.layerLookup) {
+            this.layerLookup = {};
+        }
         var layerStore = viewer.mapPanel.layers;
         if (layerStore.getCount() > 0) {
             this.onLayerStoreAdd(layerStore, layerStore.getRange());
@@ -720,18 +832,22 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
 
     /** private: method[getFilterFromSLD]
      *  :arg key: ``String``
+     *  :arg styleName: ``String``
      *  :returns: ``OpenLayers.Filter``
      *
      *  Extract the Filter from the SLD.
      */
-    getFilterFromSLD: function(key) {
+    getFilterFromSLD: function(key, styleName) {
         var sld = this.sldCache[key];
+        if (sld === undefined) {
+            return false;
+        }
         var filters = [];
         var elseFilter = false;
         for (var lyr in sld.namedLayers) {
             for (var i=0, ii=sld.namedLayers[lyr].userStyles.length; i<ii; ++i) {
                 var style = sld.namedLayers[lyr].userStyles[i];
-                if (style.isDefault === true) {
+                if ((styleName === "" && style.isDefault === true) || (style.name === styleName)) {
                     for (var j=0, jj=style.rules.length; j<jj; ++j) {
                         var rule = style.rules[j];
                         if (rule.elseFilter === true) {
@@ -811,14 +927,21 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
                         this.schemaCache[key] = schema;
                         var callback = function(attribute, key, record, protocol, schema) {
                             if (attribute) {
-                                this.layerLookup[key] = {
+                                this.layerLookup[key] = Ext.applyIf(this.layerLookup[key] || {}, {
                                     timeAttr: attribute,
                                     visible: false
-                                };
+                                });
                                 this.addVectorLayer(record, protocol, schema);
                             }
                         };
-                        this.getTimeAttribute(record, protocol, schema, callback);
+                        if (this.layerLookup && this.layerLookup[key] && this.layerLookup[key].timeAttr) {
+                            this.addVectorLayer(record, protocol, schema);
+                            if (this.layerLookup[key].clientSideFilter) {
+                                this.applyFilter(record, this.layerLookup[key].clientSideFilter, true);
+                            }
+                        } else {
+                            this.getTimeAttribute(record, protocol, schema, callback);
+                        }
                     }, this);
                 }
             }
@@ -840,29 +963,38 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
         }
     },
 
+    /** private: method[findBestZoomLevel]
+     *  :arg range: ``Array``
+     *
+     *  Find the best zoom level to display the range and perform the zoom.
+     */
     findBestZoomLevel: function(range) {
         if (this.timeline) {
+            this._silent = true;
             var diff = range[1]-range[0];
             var band = this.timeline.getBand(0);
-            var length = band.getViewLength();
-            var level = diff/band.getEther()._interval;
-            var pixels = length/level;
-            var delta;
-            var prevDelta = Number.POSITIVE_INFINITY;
-            var idx;
-            for (var i=0, ii=band._zoomSteps.length; i<ii; ++i) {
-                delta = Math.abs(band._zoomSteps[i].pixelsPerInterval-pixels);
-                if (delta < prevDelta) {
-                    idx = i;
+            var length = band.getViewLength()/2;
+            if (length > 0) {
+                var level = diff/band.getEther()._interval;
+                var pixels = length/level;
+                var delta;
+                var prevDelta = Number.POSITIVE_INFINITY;
+                var idx;
+                for (var i=0, ii=band._zoomSteps.length; i<ii; ++i) {
+                    delta = Math.abs(band._zoomSteps[i].pixelsPerInterval-pixels);
+                    if (delta < prevDelta) {
+                        idx = i;
+                    }
+                    prevDelta = delta;
                 }
-                prevDelta = delta;
-            }
-            if (idx !== band._zoomIndex) {
-                var zoomIn = idx < band._zoomIndex;
-                while (idx != band._zoomIndex) {
-                    band.zoom(zoomIn);
+                if (idx !== band._zoomIndex) {
+                    var zoomIn = idx < band._zoomIndex;
+                    while (idx != band._zoomIndex) {
+                        band.zoom(zoomIn);
+                    }
                 }
-                band.paint();
+                this.timeline.paint();
+                delete this._silent;
             }
         }
     },
@@ -887,9 +1019,110 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
         }
     },
 
+    /** private: method[updateRangeSlider]
+     *  :arg range: ``Array``
+     *
+     *  Update the slider tip for the range slider.
+     */
     updateRangeSlider: function(range) {
         this.rangeSlider.startDate = range[0].dateFormat('Y-m-d');
         this.rangeSlider.endDate = range[1].dateFormat('Y-m-d');
+    },
+
+    /** private: method[displayTooltip]
+     *  :arg record: ``GeoExt.data.FeatureRecord``
+     *
+     *  Create and show the tooltip for a record.
+     */
+    displayTooltip: function(record) {
+        if (!this.tooltips) {
+            this.tooltips = {};
+        }
+        var fid = record.getFeature().fid;
+        if (!this.tooltips[fid]) {
+            this.tooltips[fid] = new Ext.ToolTip({
+                html: record.get("title")
+            });
+        }
+        this.tooltips[fid].showBy(this.viewer.mapPanel.body, record.get("appearance"));
+    },
+
+    /** private: method[hideTooltip]
+     *  :arg record: ``GeoExt.data.FeatureRecord``
+     *
+     *  Hide the tooltip associated with the record.
+     */
+    hideTooltip: function(record) {
+        var fid = record.getFeature().fid;
+        if (this.tooltips && this.tooltips[fid]) {
+            this.tooltips[fid].hide();
+        }
+    },
+
+    /** private: method[showAnnotations]
+     *  :arg time: ``Date``
+     *
+     *  Show annotations in the map.
+     */
+    showAnnotations: function(time) {
+        if (!this.annotationsLayer) {
+            this.annotationsLayer = new OpenLayers.Layer.Vector(null, {
+                displayInLayerSwitcher: false,
+                styleMap: new OpenLayers.StyleMap({'default':{
+                    label: "${title}",
+                    fontColor: "black",
+                    fontSize: "12px",
+                    fontFamily: "Courier New, monospace",
+                    fontWeight: "bold",
+                    labelOutlineColor: "white",
+                    labelAlign: "middle",
+                    labelOutlineWidth: 3
+                }})
+            });
+            this.viewer && this.viewer.mapPanel.map.addLayer(this.annotationsLayer);
+        }
+        var compare = time.getTime()/1000;
+        if (this.featureManager && this.featureManager.featureStore) {
+            this.featureManager.featureStore.each(function(record) {
+                var mapFilterAttr = this.annotationConfig.mapFilterAttr;
+                if (record.get(mapFilterAttr) && Boolean(record.get(mapFilterAttr))) {
+                    var startTime = parseFloat(record.get("start_time"));
+                    var endTime = record.get("end_time");
+                    var ranged = (endTime !== "");
+                    var hasGeometry = (record.getFeature().geometry !== null);
+                    if (ranged === true) {
+                        if (compare <= parseFloat(endTime) && compare >= startTime) {
+                            if (hasGeometry === true) {
+                                this.annotationsLayer.drawFeature(record.getFeature());
+                            } else {
+                                this.displayTooltip(record);
+                            }
+                        } else {
+                            if (hasGeometry === true) {
+                                this.annotationsLayer.eraseFeatures([record.getFeature()]);
+                            } else {
+                                this.hideTooltip(record);
+                            }
+                        }
+                    } else {
+                        // we need to take a margin for the feature to have a chance to show up
+                        if (startTime >= 0.99*compare && startTime <= 1.01*compare) {
+                            if (hasGeometry === true) {
+                                this.annotationsLayer.drawFeature(record.getFeature());
+                            } else {
+                                this.displayTooltip(record);
+                            }
+                        } else {
+                            if (hasGeometry === true) {
+                                this.annotationsLayer.eraseFeatures([record.getFeature()]);
+                            } else {
+                                this.hideTooltip(record);
+                            }
+                        }
+                    }
+                }
+            }, this);
+        }
     },
 
     /** private: method[setCenterDate]
@@ -918,26 +1151,24 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
                     var startOriginal = new Date(time.getTime() - span/4);
                     var endOriginal = new Date(time.getTime() + span/4);
                     this.rangeInfo.original = [startOriginal, endOriginal];
-                    var rangeToClear = undefined;
                     // we have moved ahead in time, and we have not moved so far that 
                     // all our data is invalid
                     if (start > currentRange[0] && start < currentRange[1]) {
                         // only request the slice of data that we need
-                        rangeToClear = [currentRange[0], start];
                         start = currentRange[1];
                     }
                     // we have moved back in time
                     if (start < currentRange[0] && end > currentRange[0]) {
-                        rangeToClear = [end, currentRange[1]];
                         end = currentRange[0];
                     }
                     for (var key in this.layerLookup) {
                         var layer = this.layerLookup[key].layer;
                         layer && this.setTimeFilter(key, this.createTimeFilter([start, end], key, 0, false));
                     }
-                    this.updateTimelineEvents({force: true}, rangeToClear);
+                    this.updateTimelineEvents({force: true}, true);
                 }
             }
+            this.showAnnotations(time);
         }
     },
 
@@ -988,7 +1219,7 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
         // when the timeline moves, it does this intelligently as to only fetch the
         // necessary new slice of data, which is represented by start and end.
         this.updateRangeSlider(this.rangeInfo.current);
-        //this.findBestZoomLevel([start, end]);
+        this.findBestZoomLevel([start, end]);
         return new OpenLayers.Filter({
             type: OpenLayers.Filter.Comparison.BETWEEN,
             property: this.layerLookup[key].timeAttr,
@@ -1087,7 +1318,8 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
      */
     addVectorLayer: function(record, protocol, schema) {
         var key = this.getKey(record);
-        this.layerLookup[key].sldFilter = this.getFilterFromSLD(key);
+        var style = record.getLayer().params.STYLES;
+        this.layerLookup[key].sldFilter = this.getFilterFromSLD(key, style);
         if (this.playbackTool) {
             // TODO consider putting an api method getRange on playback tool
             var range = this.playbackTool.playbackToolbar.control.range;
@@ -1109,15 +1341,15 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
             visibility: false
         });
         layer.events.on({
-            loadstart: this.onLoadStart,
-            loadend: this.onLoadEnd,
+            /*loadstart: this.onLoadStart,
+            loadend: this.onLoadEnd,*/
             featuresadded: this.onFeaturesAdded.createDelegate(this, [key], 1),
             featuresremoved: this.onFeaturesRemoved,
             scope: this
         });
 
         var titleAttr = this.guessTitleAttribute(schema);
-        Ext.apply(this.layerLookup[key], {
+        Ext.applyIf(this.layerLookup[key], {
             layer: layer,
             titleAttr: titleAttr,
             hitCount: this.createHitCountProtocol(protocol.options)
@@ -1130,16 +1362,40 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
      */
     onMapMoveEnd: function() {
         this._silentMapMove !== true && this.updateTimelineEvents();
+        this.filterAnnotationsByBBOX();
+    },
+
+    /** private: method[filterAnnotationsByBBOX]
+     *  Makee sure only annotations show up that are in the map.
+     */
+    filterAnnotationsByBBOX: function() {
+        if (this.featureManager && this.featureManager.featureStore) {
+            var fids = [];
+            this.featureManager.featureStore.each(function(record) {
+                var feature = record.getFeature();
+                if (feature.geometry !== null) {
+                    var bounds = feature.geometry.getBounds();
+                    if (!bounds.intersectsBounds(this.viewer.mapPanel.map.getExtent())) {
+                        fids.push(feature.fid);
+                    }
+                }
+            }, this);
+            var filterMatcher = function(evt) {
+                return (fids.indexOf(evt.getProperty('fid')) === -1);
+            };
+            this.setFilterMatcher(filterMatcher);
+        }
     },
     
     /** private: method[updateTimelineEvents]
      *  :arg options: `Object` First arg to OpenLayers.Strategy.BBOX::update.
-     *  :arg rangeToClear: ``Array`` Optional date range to use for clearing.
+     *  :arg clearWhenInvisible: ``Boolean`` If true, only clear if events are
+     *  outside of the visible band.
      *
      *  Load the data for the timeline. Only load the data if the total number
      *  features is below a configurable threshold.
      */
-    updateTimelineEvents: function(options, rangeToClear) {
+    updateTimelineEvents: function(options, clearWhenInvisible) {
         if (!this.rendered) {
             return;
         }
@@ -1189,8 +1445,8 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
                 for (key in this.layerLookup) {
                     layer = this.layerLookup[key].layer;
                     if (layer && layer.strategies !== null) {
-                        if (rangeToClear !== undefined) {
-                            this.clearEventsForRange(key, rangeToClear);
+                        if (clearWhenInvisible === true) {
+                            this.clearInvisibleEvents(key);
                         } else {
                             this.clearEventsForKey(key);
                         }
@@ -1222,9 +1478,7 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
     clearEventsForKey: function(key) {
         var iterator = this.eventSource.getAllEventIterator();
         var eventIds = [];
-        var count = 0;
         while (iterator.hasNext()) {
-            count++;
             var evt = iterator.next();
             if (evt.getProperty('key') === key) {
                 eventIds.push(evt.getID());
@@ -1234,6 +1488,34 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
             this.eventSource.remove(eventIds[i]);
         }
         this.timeline && this.timeline.layout();
+    },
+
+    /** private: method[clearInvisibleEvents]
+     *  :arg key: ``String`` 
+     *
+     *  Clear the events from the timeline for a certain layer but only clear
+     *  the events that are outside of the visible range.
+     */
+    clearInvisibleEvents: function(key) {
+        if (this.timeline) {
+            var band = this.timeline.getBand(0);
+            var min = band.getMinVisibleDate();
+            var max = band.getMaxVisibleDate();
+            var iterator = this.eventSource.getAllEventIterator();
+            var eventIds = [];
+            while (iterator.hasNext()) {
+                var evt = iterator.next();
+                var start = evt.getProperty('start');
+                var visible = start >= min && start <= max;
+                if (evt.getProperty('key') === key && !visible) {
+                    eventIds.push(evt.getID());
+                }
+            }
+            for (var i=0, len=eventIds.length; i<len; ++i) {
+                this.eventSource.remove(eventIds[i]);
+            }
+            this.timeline.layout();
+        }
     },
 
     /** private: method[clearEventsForRange]
@@ -1246,9 +1528,7 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
     clearEventsForRange: function(key, range) {
         var iterator = this.eventSource.getAllEventIterator();
         var eventIds = [];
-        var count = 0;
         while (iterator.hasNext()) {
-            count++;
             var evt = iterator.next();
             var start = evt.getProperty('start');
             // only clear if in range
@@ -1302,27 +1582,65 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
      *  Add some features to the timeline.
      */    
     addFeatures: function(key, features) {
+        var isDuration = false;
         var titleAttr = this.layerLookup[key].titleAttr;
         var timeAttr = this.layerLookup[key].timeAttr;
+        var filterAttr = this.layerLookup[key].filterAttr;
+        if (!timeAttr) {
+            isDuration = true;
+        }
         var num = features.length;
-        var events = new Array(num);
+        var events = [];
         var attributes, str;
         for (var i=0; i<num; ++i) { 
             attributes = features[i].attributes;
-            events[i] = {
-                start: OpenLayers.Date.parse(attributes[timeAttr]),
-                title: attributes[titleAttr],
-                durationEvent: false,
-                key: key,
-                icon: this.layerLookup[key].icon,
-                fid: features[i].fid
-            };      
+            if (isDuration === false) {
+                events.push({
+                    start: OpenLayers.Date.parse(attributes[timeAttr]),
+                    title: attributes[titleAttr],
+                    durationEvent: false,
+                    key: key,
+                    icon: this.layerLookup[key].icon,
+                    fid: features[i].fid
+                });
+            } else if (attributes[filterAttr] && Boolean(attributes[filterAttr])) {
+                var start = attributes[this.layerLookup[key].startTimeAttr];
+                var end = attributes[this.layerLookup[key].endTimeAttr];
+                // end is optional
+                var durationEvent = (start !== undefined && end !== undefined);
+                if (start !== undefined) {
+                    start = parseFloat(start);
+                    if (Ext.isNumber(start)) {
+                        start = new Date(start*1000);
+                    } else {
+                        start = OpenLayers.Date.parse(start);
+                    }
+                }
+                if (end !== undefined) {
+                    end = parseFloat(end);
+                    if (Ext.isNumber(end)) {
+                        end = new Date(end*1000);
+                    } else {
+                        end = OpenLayers.Date.parse(end);
+                    }
+                }
+                events.push({
+                    start: start,
+                    end: end,
+                    icon: this.layerLookup[key].icon,
+                    title: attributes[titleAttr],
+                    durationEvent: durationEvent,
+                    key: key,
+                    fid: features[i].fid
+                });
+            }
         }       
         var feed = {
             dateTimeFormat: "javascriptnative", //"iso8601",
             events: events
         };
-        this.eventSource.loadJSON(feed, "http://mapstory.org/");
+        // do not use a real URL here, since this will mess up relative URLs
+        this.eventSource.loadJSON(feed, "mapstory.org");
     },
 
     /** private: method[onFeaturesAdded]
@@ -1361,9 +1679,10 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
                 layer.destroy();
             }
         }
+        this.annotationsLayer = null;
         this.destroyPopup();
         this.unbindViewer();
-        this.unbindFeatureManager();
+        this.unbindFeatureEditor();
         this.unbindPlaybackTool();
         if (this.rendered){
             Ext.destroy(this.busyMask);
@@ -1374,6 +1693,27 @@ gxp.TimelinePanel = Ext.extend(Ext.Panel, {
             this.timeline = null;
         }
         this.busyMask = null;
+    },
+
+    /** api: method[getState]
+     *  :returns {Object} - user configured settings
+     *  
+     *  Widget specific implementation of the getState function
+     */
+    getState: function() {
+        var result = {
+            layerLookup: {}
+        };
+        for (var key in this.layerLookup) {
+            var info = this.layerLookup[key];
+            result.layerLookup[key] = {
+                titleAttr: info.titleAttr,
+                timeAttr: info.timeAttr,
+                visible: info.visible,
+                clientSideFilter: info.clientSideFilter
+            };
+        }
+        return result;
     }
 
 });
