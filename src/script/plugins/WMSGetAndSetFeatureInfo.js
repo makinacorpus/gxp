@@ -245,8 +245,8 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                                 },
                                 failure: function(response, options) {
                                     Ext.Msg.alert('Error', 'Save failed.');
-                                },
-                            })
+                                }
+                            });
                         },
                         scope: this
                     }]
