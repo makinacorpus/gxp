@@ -72,7 +72,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
      *  Default is "html".
      */
     format: "html",
-    
+
     /** api: config[urlWriteFeature]
      *  ``String`` URL for writting feature modifications
      */
@@ -235,6 +235,17 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
      * :arg text: ``String`` Body text.
      */
     displayPopup: function(evt, associated, popupKey, title, text) {
+
+        if(!associated)
+            var features = evt.features;
+        else
+            var features = evt;
+
+        if(features && features.length == 0) {
+            Ext.Msg.alert('Information', 'No informations to display.');
+            return;
+        }
+
         if(!associated) {
             var popup;
             //var popupKey = evt.xy.x + "." + evt.xy.y;
@@ -291,10 +302,8 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
         } else 
             popup = this.popupCache[popupKey];
 
-        if(!associated)
-            var features = evt.features;
-        else
-            var features = evt;
+
+
         var config = [];
         if (!text && features) {
             var feature;
@@ -332,8 +341,10 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             }
         }
 
-        popup.add(config);
-        popup.doLayout();
+        if(popup) {
+            popup.add(config);
+            popup.doLayout();
+        }
     }
 
 });
