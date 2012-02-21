@@ -66,6 +66,12 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
      */
     urlMainFeatures: "",
     
+    
+    /** api: config[lastPointClicked]
+     *  ``String`` Last point clicked
+     */
+    lastPointClicked: "",
+    
     /** api: config[vendorParams]
      *  ``Object``
      *  Optional object with properties to be serialized as vendor specific
@@ -155,6 +161,14 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                         getfeatureinfo: function(evt) {
 			    var title = x.get("title") || x.get("name");
 			    
+			    var pointClicked = evt.xy.x + "." + evt.xy.y;
+			    if(this.lastPointClicked != pointClicked) {
+				// If another point is clicked, then reset all results
+				app.featuresTabPanel.removeAll();
+                                delete app.featureCache;				
+				this.lastPointClicked = pointClicked;
+			    }
+			    
 			    // Get main feature (instead of those retreive by WMS)
 			    var features = evt.features;
                             if (features) {
@@ -242,13 +256,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
      *     reporting the info to the user
      * :arg text: ``String`` Body text.
      */
-    displayInfos: function(evt, associated, parentKey, title, text) {
-
-        /*if(!associated)
-            var features = evt.features;
-        else
-            var features = evt;*/
-	var features = evt;
+    displayInfos: function(features, associated, parentKey, title, text) {
 
         // Add feature attributes to cache
         if(!app.featureCache)
@@ -284,6 +292,10 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                             items: [item]
                         };
 		    app.featuresTabPanel.add(newTab);
+		    app.featuresTabPanel.activate(key);
+		    
+		    // Highlight feature
+		    this.highLightFeatures(feature.geom);
                 }
             }
         } else if (text) {
@@ -303,7 +315,54 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 app.featureCache.push(attributes);
             }
         }
+    },
+    
+    /** private: method[highLightFeatures]
+     * :arg geometry: the geometry to draw on an overlay layer
+     */
+    highLightFeatures: function(geometry) {
+	if(geometry != "") {
+	    var map = this.target.mapPanel.map;
+	    // Set the layer for highlight
+	    var styleHighLight = new OpenLayers.StyleMap({
+		"default": new OpenLayers.Style({
+		    pointRadius: 6,
+		    strokeColor: "#00FF00",
+		    strokeWidth: 6,
+		    graphicZIndex: 1
+		})
+	    });
+	    highLightLayers = map.getLayersByName("highLightLayer");
+	    if(highLightLayers.length == 0) {
+		highLightLayer = new OpenLayers.Layer.Vector("highLightLayer", {styleMap: styleHighLight});
+		map.addLayer(highLightLayer);
+	    }
+	    else {
+		highLightLayer = highLightLayers[0];
+		highLightLayer.removeAllFeatures();
+	    }
+	    
+	    // Add features
+	    var wkt = new OpenLayers.Format.WKT();
+            var wktData = geometry;
+	    var features = wkt.read(wktData);
+	    if(features) {
+		if(features.constructor != Array) {
+		    features = [features];
+		}
+		var bounds;
+		for(var i = 0; i < features.length; ++i) {
+		    if (!bounds) {
+			bounds = features[i].geometry.getBounds();
+		    } else {
+			bounds.extend(features[i].geometry.getBounds());
+		    }
 
+		}
+		highLightLayer.addFeatures(features);
+
+	    }
+	}
     }
 
 });
