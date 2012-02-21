@@ -110,10 +110,10 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             toggleHandler: function(button, pressed) {
                 for (var i = 0, len = info.controls.length; i < len; i++){
                     if (pressed) {
-			app.featuresPanel.expand();
+                        app.featuresPanel.expand();
                         info.controls[i].activate();
                     } else {
-			app.featuresPanel.collapse();
+                        app.featuresPanel.collapse();
                         info.controls[i].deactivate();
                     }
                 }
@@ -159,37 +159,38 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                     vendorParams: vendorParams,
                     eventListeners: {
                         getfeatureinfo: function(evt) {
-			    var title = x.get("title") || x.get("name");
-			    
-			    var pointClicked = evt.xy.x + "." + evt.xy.y;
-			    if(this.lastPointClicked != pointClicked) {
-				// If another point is clicked, then reset all results
-				app.featuresTabPanel.removeAll();
+                            var title = x.get("title") || x.get("name");
+
+                            var pointClicked = evt.xy.x + "." + evt.xy.y;
+                            if(this.lastPointClicked != pointClicked) {
+                                // If another point is clicked, then reset all results
+                                app.featuresTabPanel.removeAll();
                                 delete app.featureCache;				
-				this.lastPointClicked = pointClicked;
-			    }
-			    
-			    // Get main feature (instead of those retreive by WMS)
-			    var features = evt.features;
+                                this.lastPointClicked = pointClicked;
+                            }
+
+                            // Get main feature (instead of those retreive by WMS)
+                            var features = evt.features;
                             if (features) {
-                                  var feature;
-                                    for (var i=0, ii=features.length; i<ii; ++i) {
-                                        feature = features[i];
-					Ext.Ajax.request({
-					    url: this.urlMainFeatures,
-					    method: 'POST',
-					    scope: this,
-					    params: { object_name :feature.gml.featureType, object_id: feature.fid},
-					    success: function(response, options) {
-						var features = eval('(' + response.responseText + ')');
-						this.displayInfos(features, false, '', title);
-					    },
-					    failure: function(response, options) {
-						Ext.Msg.alert('Error', 'Could not retreive feature\'s attributes.');
-					    }
-					});
-				    }
-			    }
+                                var feature;
+                                for (var i=0, ii=features.length; i<ii; ++i) {
+                                    feature = features[i];
+                                    Ext.Ajax.request({
+                                        url: this.urlMainFeatures,
+                                        method: 'POST',
+                                        scope: this,
+                                        params: { object_name :feature.gml.featureType, object_id: feature.fid,
+                                                map_projection: this.target.mapPanel.map.projection.replace("EPSG:","")},
+                                        success: function(response, options) {
+                                        var features = eval('(' + response.responseText + ')');
+                                        this.displayInfos(features, false, '', title);
+                                        },
+                                        failure: function(response, options) {
+                                        Ext.Msg.alert('Error', 'Could not retreive feature\'s attributes.');
+                                        }
+                                    });
+                                }
+                            }
 
                             /*if (infoFormat == "text/html") {
                                 var match = evt.text.match(/<body[^>]*>([\s\S]*)<\/body>/);
@@ -210,12 +211,13 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                                     for (var i=0, ii=features.length; i<ii; ++i) {
                                         feature = features[i];
                                         //var id_parent = feature.gml.featureType + feature.fid;
-					var id_parent = feature.gml.featureType + feature.fid.replace(feature.gml.featureType+".","");
+                                        var id_parent = feature.gml.featureType + feature.fid.replace(feature.gml.featureType+".","");
                                         Ext.Ajax.request({
                                             url: this.urlAssociatedFeatures,
                                             method: 'POST',
                                             scope: this,
-                                            params: { object_name :feature.gml.featureType, object_id: feature.fid},
+                                            params: { object_name :feature.gml.featureType, object_id: feature.fid, 
+                                                    map_projection: this.target.mapPanel.map.projection.replace("EPSG:","")},
                                             success: function(response, options) {
                                                 var features = eval('(' + response.responseText + ')');
                                                 this.displayInfos(features, true, id_parent);
@@ -280,22 +282,22 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                     // Search for the good tab
                     app.featuresTabPanel.getItem(parentKey).add(item);
                 }
-		
+
                 // if main object , create a new tab in the tabPanel
                 if(!associated) {
-		    key = feature.table_name + feature.fid;   
+                    key = feature.table_name + feature.fid;   
                     newTab = {
-                            title: key,
-                            id: key,
-                            layout: "accordion",
-                            autoScroll:true,
-                            items: [item]
-                        };
-		    app.featuresTabPanel.add(newTab);
-		    app.featuresTabPanel.activate(key);
-		    
-		    // Highlight feature
-		    this.highLightFeatures(feature.geom);
+                        title: key,
+                        id: key,
+                        layout: "accordion",
+                        autoScroll:true,
+                        items: [item]
+                     };
+                    app.featuresTabPanel.add(newTab);
+                    app.featuresTabPanel.activate(key);
+
+                    // Highlight feature
+                    this.highLightFeatures(feature.geom);
                 }
             }
         } else if (text) {
@@ -311,7 +313,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             if(feature.fid) {
                 var attributes = feature.attributes;
                 attributes.fid = feature.fid;
-		attributes.table_name = feature.table_name;
+                attributes.table_name = feature.table_name;
                 app.featureCache.push(attributes);
             }
         }
@@ -321,48 +323,46 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
      * :arg geometry: the geometry to draw on an overlay layer
      */
     highLightFeatures: function(geometry) {
-	if(geometry != "") {
-	    var map = this.target.mapPanel.map;
-	    // Set the layer for highlight
-	    var styleHighLight = new OpenLayers.StyleMap({
-		"default": new OpenLayers.Style({
-		    pointRadius: 6,
-		    strokeColor: "#00FF00",
-		    strokeWidth: 6,
-		    graphicZIndex: 1
-		})
-	    });
-	    highLightLayers = map.getLayersByName("highLightLayer");
-	    if(highLightLayers.length == 0) {
-		highLightLayer = new OpenLayers.Layer.Vector("highLightLayer", {styleMap: styleHighLight});
-		map.addLayer(highLightLayer);
-	    }
-	    else {
-		highLightLayer = highLightLayers[0];
-		highLightLayer.removeAllFeatures();
-	    }
-	    
-	    // Add features
-	    var wkt = new OpenLayers.Format.WKT();
+        if(geometry != "") {
+            var map = this.target.mapPanel.map;
+            // Set the layer for highlight
+            var styleHighLight = new OpenLayers.StyleMap({
+                "default": new OpenLayers.Style({
+                    pointRadius: 6,
+                    strokeColor: "#00FF00",
+                    strokeWidth: 6,
+                    graphicZIndex: 1
+                })
+            });
+            highLightLayers = map.getLayersByName("highLightLayer");
+            if(highLightLayers.length == 0) {
+                highLightLayer = new OpenLayers.Layer.Vector("highLightLayer", {styleMap: styleHighLight});
+                map.addLayer(highLightLayer);
+            }
+            else {
+                highLightLayer = highLightLayers[0];
+                highLightLayer.removeAllFeatures();
+            }
+    
+            // Add features
+            var wkt = new OpenLayers.Format.WKT();
             var wktData = geometry;
-	    var features = wkt.read(wktData);
-	    if(features) {
-		if(features.constructor != Array) {
-		    features = [features];
-		}
-		var bounds;
-		for(var i = 0; i < features.length; ++i) {
-		    if (!bounds) {
-			bounds = features[i].geometry.getBounds();
-		    } else {
-			bounds.extend(features[i].geometry.getBounds());
-		    }
-
-		}
-		highLightLayer.addFeatures(features);
-
-	    }
-	}
+            var features = wkt.read(wktData);
+            if(features) {
+                if(features.constructor != Array) {
+                    features = [features];
+                }
+                var bounds;
+                for(var i = 0; i < features.length; ++i) {
+                    if (!bounds) {
+                        bounds = features[i].geometry.getBounds();
+                    } else {
+                        bounds.extend(features[i].geometry.getBounds());
+                    }
+                }
+                highLightLayer.addFeatures(features);
+            }
+        }
     }
 
 });
