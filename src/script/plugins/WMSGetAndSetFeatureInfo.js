@@ -37,33 +37,11 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
      */
     outputTarget: "map",
 
-    /** private: property[popupCache]
-     *  ``Object``
-     */
-    popupCache: null,
-
-    /** private: property[featureCache]
-     *  ``Object``
-     */
-    featureCache: null,
-
     /** api: config[infoActionTip]
      *  ``String``
      *  Text for feature info action tooltip (i18n).
      */
     infoActionTip: "Get Feature Info",
-
-    /** api: config[popupTitle]
-     *  ``String``
-     *  Title for info popup (i18n).
-     */
-    popupTitle: "Feature Info",
-
-    /** api: config[savefeatureText]
-     *  ``String``
-     *  Text for save feature (i18n).
-     */
-    saveFeatureText: "Save",
 
     /** api: config[format]
      *  ``String`` Either "html" or "grid". If set to "grid", GML will be
@@ -82,7 +60,13 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
      *  ``String`` URL for getting associated features to load
      */
     urlAssociatedFeatures: "",
-     /** api: config[vendorParams]
+
+    /** api: config[urlMainFeatures]
+     *  ``String`` URL for getting main features attributes instead of those retreive by WMS
+     */
+    urlMainFeatures: "",
+    
+    /** api: config[vendorParams]
      *  ``Object``
      *  Optional object with properties to be serialized as vendor specific
      *  parameters in the requests (e.g. {buffer: 10}).
@@ -109,8 +93,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
     /** api: method[addActions]
      */
     addActions: function() {
-        this.popupCache = {};
-        this.featureCache = new Array;
+        app.featureCache = new Array;
 
         var actions = gxp.plugins.WMSGetAndSetFeatureInfo.superclass.addActions.call(this, [{
             tooltip: this.infoActionTip,
@@ -121,8 +104,10 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             toggleHandler: function(button, pressed) {
                 for (var i = 0, len = info.controls.length; i < len; i++){
                     if (pressed) {
+			app.featuresPanel.expand();
                         info.controls[i].activate();
                     } else {
+			app.featuresPanel.collapse();
                         info.controls[i].deactivate();
                     }
                 }
@@ -168,18 +153,40 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                     vendorParams: vendorParams,
                     eventListeners: {
                         getfeatureinfo: function(evt) {
-                            var popupKey = evt.xy.x + "." + evt.xy.y;
-                            var title = x.get("title") || x.get("name");
-                            if (infoFormat == "text/html") {
+			    var title = x.get("title") || x.get("name");
+			    
+			    // Get main feature (instead of those retreive by WMS)
+			    var features = evt.features;
+                            if (features) {
+                                  var feature;
+                                    for (var i=0, ii=features.length; i<ii; ++i) {
+                                        feature = features[i];
+					Ext.Ajax.request({
+					    url: this.urlMainFeatures,
+					    method: 'POST',
+					    scope: this,
+					    params: { object_name :feature.gml.featureType, object_id: feature.fid},
+					    success: function(response, options) {
+						var features = eval('(' + response.responseText + ')');
+						this.displayInfos(features, false, '', title);
+					    },
+					    failure: function(response, options) {
+						Ext.Msg.alert('Error', 'Could not retreive feature\'s attributes.');
+					    }
+					});
+				    }
+			    }
+
+                            /*if (infoFormat == "text/html") {
                                 var match = evt.text.match(/<body[^>]*>([\s\S]*)<\/body>/);
                                 if (match && !match[1].match(/^\s*$/)) {
-                                    this.displayPopup(evt, false, popupKey, title, match[1]);
+                                    this.displayInfos(evt, false, title, match[1]);
                                 }
                             } else if (infoFormat == "text/plain") {
-                                this.displayPopup(evt, false, popupKey, title, '<pre>' + evt.text + '</pre>');
+                                this.displayInfos(evt, false, '', title, '<pre>' + evt.text + '</pre>');
                             } else {
-                                this.displayPopup(evt, false, popupKey, title);
-                            }
+                                this.displayInfos(evt, false, '', title);
+                            }*/
 
                             // Get associated feature if needed
                             if(this.urlAssociatedFeatures != "") {
@@ -188,15 +195,16 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                                     var feature;
                                     for (var i=0, ii=features.length; i<ii; ++i) {
                                         feature = features[i];
-                                        //feature.fid
+                                        //var id_parent = feature.gml.featureType + feature.fid;
+					var id_parent = feature.gml.featureType + feature.fid.replace(feature.gml.featureType+".","");
                                         Ext.Ajax.request({
                                             url: this.urlAssociatedFeatures,
                                             method: 'POST',
                                             scope: this,
-                                            params: { object_name :feature.attributes.table_name, object_id: feature.fid},
+                                            params: { object_name :feature.gml.featureType, object_id: feature.fid},
                                             success: function(response, options) {
                                                 var features = eval('(' + response.responseText + ')');
-                                                this.displayPopup(features, true, popupKey);
+                                                this.displayInfos(features, true, id_parent);
                                             },
                                             failure: function(response, options) {
                                                 Ext.Msg.alert('Error', 'Could not retreive associated features.');
@@ -217,104 +225,66 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             }, this);
 
         };
-        
+
         this.target.mapPanel.layers.on("update", updateInfo, this);
         this.target.mapPanel.layers.on("add", updateInfo, this);
         this.target.mapPanel.layers.on("remove", updateInfo, this);
-        
+
         return actions;
     },
 
-    /** private: method[displayPopup]
+    /** private: method[displayInfos]
      * :arg evt: the event object from a 
      *     :class:`OpenLayers.Control.GetFeatureInfo` control
      * :arg associated: indicate if we are displaying request feature, or associated features
-     * :arg popupKey: key of the popup
+     * :arg parentKey: for associated objects, parent id for inserting infos in the right tab
      * :arg title: a String to use for the title of the results section 
      *     reporting the info to the user
      * :arg text: ``String`` Body text.
      */
-    displayPopup: function(evt, associated, popupKey, title, text) {
+    displayInfos: function(evt, associated, parentKey, title, text) {
 
-        if(!associated)
+        /*if(!associated)
             var features = evt.features;
         else
-            var features = evt;
+            var features = evt;*/
+	var features = evt;
 
-        if(features && features.length == 0) {
-            Ext.Msg.alert('Information', 'No informations to display.');
-            return;
-        }
-
-        if(!associated) {
-            var popup;
-            //var popupKey = evt.xy.x + "." + evt.xy.y;
-
-            if (!(popupKey in this.popupCache)) {
-                popup = this.addOutput({
-                    xtype: "gx_popup",
-                    title: this.popupTitle,
-                    layout: "accordion",
-                    location: evt.xy,
-                    map: this.target.mapPanel,
-                    width: 350,
-                    height: 400,
-                    defaults: {
-                        layout: "fit",
-                        autoScroll: true,
-                        autoWidth: true,
-                        collapsible: true
-                    },
-                    listeners: {
-                        close: (function(key) {
-                            return function(panel){
-                                delete this.popupCache[key];
-                                delete this.featureCache;
-                            };
-                        })(popupKey),
-                        scope: this
-                    },
-                    bbar: ["->", 
-                        {
-                            text: this.saveFeatureText,
-                            iconCls: "gxp-icon-save",
-                            handler: function() {
-                                jsonDataEncode = Ext.util.JSON.encode(this.featureCache);
-                                Ext.Ajax.request({
-                                    url: this.urlWriteFeature,
-                                    method: 'POST',
-                                    params: { data :jsonDataEncode},
-                                    success: function(response, options) {
-                                        Ext.Msg.alert('Information', 'Save successful.');
-                                    },
-                                    failure: function(response, options) {
-                                        Ext.Msg.alert('Error', 'Save failed.');
-                                    }
-                                });
-                            },
-                            scope: this
-                        }]
-                });
-                this.popupCache[popupKey] = popup;
-            } else {
-                popup = this.popupCache[popupKey];
-            }
-        } else 
-            popup = this.popupCache[popupKey];
-
-
+        // Add feature attributes to cache
+        if(!app.featureCache)
+            app.featureCache = new Array();
 
         var config = [];
         if (!text && features) {
             var feature;
             for (var i=0,ii=features.length; i<ii; ++i) {
                 feature = features[i];
-                config.push(Ext.apply({
+                item = Ext.apply({
                     xtype: "propertygrid",
-                    height: 100,
+                    height: 150,
                     title: feature.fid ? feature.fid : title,
                     source: feature.attributes
-                }, this.itemConfig));
+                }, this.itemConfig);
+                config.push(item);
+                   
+                // if associated, data grid must be inserted in the right tab
+                if(associated) {
+                    // Search for the good tab
+                    app.featuresTabPanel.getItem(parentKey).add(item);
+                }
+		
+                // if main object , create a new tab in the tabPanel
+                if(!associated) {
+		    key = feature.table_name + feature.fid;   
+                    newTab = {
+                            title: key,
+                            id: key,
+                            layout: "accordion",
+                            autoScroll:true,
+                            items: [item]
+                        };
+		    app.featuresTabPanel.add(newTab);
+                }
             }
         } else if (text) {
             config.push(Ext.apply({
@@ -323,28 +293,17 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             }, this.itemConfig));
         }
 
-        // Add feature attributes to cache
-        if(!this.featureCache)
-            this.featureCache = new Array();
-
         var attributes;
         for (var i=0,ii=features.length; i<ii; ++i) {
             feature = features[i];
             if(feature.fid) {
                 var attributes = feature.attributes;
                 attributes.fid = feature.fid;
-                if(!associated)
-                    attributes.table_name = feature.gml.featureType;
-                else
-                    attributes.table_name = feature.table_name;
-                this.featureCache.push(attributes);
+		attributes.table_name = feature.table_name;
+                app.featureCache.push(attributes);
             }
         }
 
-        if(popup) {
-            popup.add(config);
-            popup.doLayout();
-        }
     }
 
 });
