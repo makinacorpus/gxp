@@ -281,6 +281,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 if(associated) {
                     // Search for the good tab
                     app.featuresTabPanel.getItem(parentKey).add(item);
+                    app.featuresTabPanel.doLayout();
                 }
 
                 // if main object , create a new tab in the tabPanel
