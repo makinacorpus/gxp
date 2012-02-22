@@ -280,3 +280,10 @@ div.map-overlay div.overlay-element {
     left: 0px;
     margin-top: 0px;
 }
+
+/* Grace specific */
+.feature-panel .x-props-grid .x-grid3-body .x-grid3-td-name {
+    background-color: #EEEEEE !important;
+    border-right-color: #EEEEEE;
+    text-align: right;
+}

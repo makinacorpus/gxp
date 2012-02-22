@@ -250,8 +250,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
     },
 
     /** private: method[displayInfos]
-     * :arg evt: the event object from a 
-     *     :class:`OpenLayers.Control.GetFeatureInfo` control
+     * :arg features: the features
      * :arg associated: indicate if we are displaying request feature, or associated features
      * :arg parentKey: for associated objects, parent id for inserting infos in the right tab
      * :arg title: a String to use for the title of the results section 
