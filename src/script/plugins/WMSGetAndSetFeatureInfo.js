@@ -121,6 +121,9 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
     addActions: function() {
         app.featureCache = new Array;
 
+        if (app.initialConfig.tools_enabled.indexOf("view_attr") == -1)
+            return;
+        
         var actions = gxp.plugins.WMSGetAndSetFeatureInfo.superclass.addActions.call(this, [{
             tooltip: this.infoActionTip,
             iconCls: "gxp-icon-getfeatureinfo",
@@ -396,28 +399,30 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 this.highLightLayer.addFeatures(features);
             }
             
-            // Enable geometry editing
-            /*this.selectCtrl = new OpenLayers.Control.SelectFeature(this.highLightLayer, {clickout: false});
-            this.highLightLayer.events.on({
-                featureselected: function(e) {
-                    this.editGeomFeaturePopup(e.feature);
-                },
-                scope: this
-            });
-            map.addControl(this.selectCtrl);
-            this.selectCtrl.activate();*/
-            modifyCtrl = new OpenLayers.Control.ModifyFeature(this.highLightLayer)
-            map.addControl(modifyCtrl);
-            modifyCtrl.activate();
-            
-            this.highLightLayer.events.on({
-                    "beforefeaturemodified": function(event) {
-                        // Deactivate select control to prevent from deselecting feature
-                        this.controlSelect.deactivate();
+            if (app.initialConfig.tools_enabled.indexOf("edit_geom") != -1) {
+                // Enable geometry editing
+                /*this.selectCtrl = new OpenLayers.Control.SelectFeature(this.highLightLayer, {clickout: false});
+                this.highLightLayer.events.on({
+                    featureselected: function(e) {
+                        this.editGeomFeaturePopup(e.feature);
                     },
-                    "afterfeaturemodified": this.endEditFeature,
                     scope: this
-            });
+                });
+                map.addControl(this.selectCtrl);
+                this.selectCtrl.activate();*/
+                modifyCtrl = new OpenLayers.Control.ModifyFeature(this.highLightLayer)
+                map.addControl(modifyCtrl);
+                modifyCtrl.activate();
+                
+                this.highLightLayer.events.on({
+                        "beforefeaturemodified": function(event) {
+                            // Deactivate select control to prevent from deselecting feature
+                            this.controlSelect.deactivate();
+                        },
+                        "afterfeaturemodified": this.endEditFeature,
+                        scope: this
+                });
+            }
         }
     },
 
