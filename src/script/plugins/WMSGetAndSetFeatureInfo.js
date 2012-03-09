@@ -66,12 +66,32 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
      */
     urlMainFeatures: "",
     
+    /** api: config[urlModifyGeomFeatures]
+     *  ``String`` URL for saving features's geometries
+     */
+    urlModifyGeomFeatures: "",
+
+    
+    /** api: config[controlSelect]
+     *  ``Object`` OpenLayers select feature control
+     */
+    controlSelect: null,
     
     /** api: config[lastPointClicked]
      *  ``String`` Last point clicked
      */
     lastPointClicked: "",
-    
+        
+    /** api: config[highLightLayer]
+     *  ``Object` Layer for highlighting and editing features
+     */
+    highLightLayer: null,
+
+     /** api: config[selectCtrl]
+     *  ``Object` OpenLayers Control for editing features
+     */
+    selectCtrl: null,
+
     /** api: config[vendorParams]
      *  ``Object``
      *  Optional object with properties to be serialized as vendor specific
@@ -151,7 +171,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                     // TODO: this will not work for WMS 1.3 (text/xml instead for GML)
                     infoFormat = this.format == "html" ? "text/html" : "application/vnd.ogc.gml";
                 }
-                var control = new OpenLayers.Control.WMSGetFeatureInfo(Ext.applyIf({
+                this.controlSelect = new OpenLayers.Control.WMSGetFeatureInfo(Ext.applyIf({
                     url: layer.url,
                     queryVisible: true,
                     layers: [layer],
@@ -189,6 +209,15 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                                         Ext.Msg.alert('Error', 'Could not retreive feature\'s attributes.');
                                         }
                                     });
+                                }
+                            }
+                            
+                            if(features && features.length == 0) {
+                                // Remove all on highLightLayer
+                                highLightLayers = map.getLayersByName("highLightLayer");
+                                if(highLightLayers.length != 0) {
+                                    this.highLightLayer = highLightLayers[0];
+                                    this.highLightLayer.removeAllFeatures();
                                 }
                             }
 
@@ -233,10 +262,10 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                         scope: this
                     }
                 }, this.controlOptions));
-                map.addControl(control);
-                info.controls.push(control);
+                map.addControl(this.controlSelect);
+                info.controls.push(this.controlSelect);
                 if(infoButton.pressed) {
-                    control.activate();
+                    this.controlSelect.activate();
                 }
             }, this);
 
@@ -297,7 +326,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                     app.featuresTabPanel.activate(key);
 
                     // Highlight feature
-                    this.highLightFeatures(feature.geom);
+                    this.highLightFeatures(feature.geom, feature.table_name, feature.fid);
                 }
             }
         } else if (text) {
@@ -321,8 +350,10 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
     
     /** private: method[highLightFeatures]
      * :arg geometry: the geometry to draw on an overlay layer
+     * :arg table_name: type of feature
+     * :arg id: id of the feature
      */
-    highLightFeatures: function(geometry) {
+    highLightFeatures: function(geometry, table_name, id) {
         if(geometry != "") {
             var map = this.target.mapPanel.map;
             // Set the layer for highlight
@@ -336,12 +367,12 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             });
             highLightLayers = map.getLayersByName("highLightLayer");
             if(highLightLayers.length == 0) {
-                highLightLayer = new OpenLayers.Layer.Vector("highLightLayer", {styleMap: styleHighLight});
-                map.addLayer(highLightLayer);
+                this.highLightLayer = new OpenLayers.Layer.Vector("highLightLayer", {styleMap: styleHighLight});
+                map.addLayer(this.highLightLayer);
             }
             else {
-                highLightLayer = highLightLayers[0];
-                highLightLayer.removeAllFeatures();
+                this.highLightLayer = highLightLayers[0];
+                this.highLightLayer.removeAllFeatures();
             }
     
             // Add features
@@ -359,11 +390,122 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                     } else {
                         bounds.extend(features[i].geometry.getBounds());
                     }
+                    features[i].attributes.id = id;
+                    features[i].attributes.table_name = table_name;
                 }
-                highLightLayer.addFeatures(features);
+                this.highLightLayer.addFeatures(features);
             }
+            
+            // Enable geometry editing
+            /*this.selectCtrl = new OpenLayers.Control.SelectFeature(this.highLightLayer, {clickout: false});
+            this.highLightLayer.events.on({
+                featureselected: function(e) {
+                    this.editGeomFeaturePopup(e.feature);
+                },
+                scope: this
+            });
+            map.addControl(this.selectCtrl);
+            this.selectCtrl.activate();*/
+            modifyCtrl = new OpenLayers.Control.ModifyFeature(this.highLightLayer)
+            map.addControl(modifyCtrl);
+            modifyCtrl.activate();
+            
+            this.highLightLayer.events.on({
+                    "beforefeaturemodified": function(event) {
+                        // Deactivate select control to prevent from deselecting feature
+                        this.controlSelect.deactivate();
+                    },
+                    "afterfeaturemodified": this.endEditFeature,
+                    scope: this
+            });
         }
-    }
+    },
+
+    /** private: method[endEditFeature]
+     * :arg event: infos on feature edited
+     */    
+    endEditFeature : function(event) {
+        var wkt = event.feature.geometry.toString();
+
+        var featureTab = new Array;
+        var attributes = {'geom' : wkt};
+        attributes.fid = event.feature.attributes.id;
+        attributes.table_name = event.feature.attributes.table_name;
+        featureTab.push(attributes);
+
+        jsonDataEncode = Ext.util.JSON.encode(featureTab);
+        var msg = "Confirm the geometric modification ( " + event.feature.attributes.table_name + " [ "+ event.feature.attributes.id + " ] )";
+        Ext.Msg.show({
+            title:'Confirmation',
+            msg: msg,
+            buttons: Ext.Msg.YESNO,
+            scope: this,
+            fn: function(btn) {
+                if(btn == "yes" || btn == "oui") {
+                    Ext.Ajax.request({
+                        url: this.urlModifyGeomFeatures,
+                        method: 'POST',
+                        scope: this,
+                        params: { object_name :event.feature.attributes.table_name, object_id: event.feature.attributes.id, 
+                                  data: jsonDataEncode, source: app.user, map_projection: this.target.mapPanel.map.projection.replace("EPSG:","")
+                        },
+                        success: function(response, options) {
+                            Ext.Msg.alert('Error', 'Geometry saved successfuly.');
+                            // Refresh layers
+                            for(i = 0; i < this.target.mapPanel.map.layers.length ; i++) {
+                                currentLayer = this.target.mapPanel.map.layers[i];
+                                if(!currentLayer.isBaseLayer && currentLayer.visibility)
+                                    currentLayer.redraw(true);
+                            }
+                        },
+                        failure: function(response, options) {
+                            Ext.Msg.alert('Error', 'Could not save geometry.');
+                        }
+                    });
+                }
+            }
+        });
+        // Reactivate select control
+        this.controlSelect.activate();
+        
+    },
+
+    /** private: method[editGeomFeaturePopup]
+     * :arg feature: the feature to modify
+     */    
+    editGeomFeaturePopup: function(feature) {
+        /*var schema = new GeoExt.data.AttributeStore({
+            data: [{name: "foo", type: "xsd:string"}, {name: "altitude", type: "xsd:int"}, {name: "startdate", type: "xsd:date"}]
+        });*/
+        /*popup = new gxp.FeatureEditPopup({
+            editorPluginConfig: {ptype: "gxp_editorform", labelWidth: 50, defaults: {width: 100}, bodyStyle: "padding: 5px 5px 0"},
+            feature: feature,
+            schema: schema,
+            width: 200,
+            height: 150,
+            collapsible: true,
+            listeners: {
+                close: function(){
+                    // unselect feature when the popup is closed
+                    if(this.highLightLayer.selectedFeatures.indexOf(this.feature) > -1) {
+                        this.selectCtrl.unselect(this.feature);
+                    }
+                },
+                featuremodified: function() {
+                    alert("You have modified the feature.");
+                }
+            }
+        });
+        popup.show();*/
+        /*controls = {
+            modify: new OpenLayers.Control.ModifyFeature(vectors)
+        };            
+        for(var key in controls) {
+            map.addControl(controls[key]);
+        }*/
+
+        
+    }    
 
 });
 
