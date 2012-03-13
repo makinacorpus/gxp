@@ -346,6 +346,9 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 var attributes = feature.attributes;
                 attributes.fid = feature.fid;
                 attributes.table_name = feature.table_name;
+                // Add the geometry (useful to check the zone rights)
+                // But the geometry won't be saved in this process
+                attributes.geom = feature.geom;
                 app.featureCache.push(attributes);
             }
         }
@@ -455,12 +458,23 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                                   data: jsonDataEncode, source: app.user, map_projection: this.target.mapPanel.map.projection.replace("EPSG:","")
                         },
                         success: function(response, options) {
-                            Ext.Msg.alert('Error', 'Geometry saved successfuly.');
-                            // Refresh layers
-                            for(i = 0; i < this.target.mapPanel.map.layers.length ; i++) {
-                                currentLayer = this.target.mapPanel.map.layers[i];
-                                if(!currentLayer.isBaseLayer && currentLayer.visibility)
-                                    currentLayer.redraw(true);
+                            var modifiedOk = true;
+                            if(response.responseText) {
+                                status = eval('(' + response.responseText + ')');
+                                if(status.records[0].status == false) {
+                                    Ext.Msg.alert('Information', status.records[0].msg);
+                                    modifiedOk = false;
+                                }
+                            }
+                            
+                            if(modifiedOk) {
+                                Ext.Msg.alert('Error', 'Geometry saved successfuly.');
+                                // Refresh layers
+                                for(i = 0; i < this.target.mapPanel.map.layers.length ; i++) {
+                                    currentLayer = this.target.mapPanel.map.layers[i];
+                                    if(!currentLayer.isBaseLayer && currentLayer.visibility)
+                                        currentLayer.redraw(true);
+                                }
                             }
                         },
                         failure: function(response, options) {
