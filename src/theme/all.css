@@ -287,3 +287,27 @@ div.map-overlay div.overlay-element {
     border-right-color: #EEEEEE;
     text-align: right;
 }
+
+.feature-panel .non_editable_field,
+.feature-panel .editable_field{
+    padding: 5px;
+}
+
+.feature-panel .editable_field {
+    background: #d2ffd2;
+    height: 1em;
+}
+
+.feature-panel .x-props-grid .x-grid3-cell {
+    padding: 0;
+}
+
+.feature-panel .x-grid3-cell-inner, 
+.feature-panel .x-grid3-hd-inner {
+    padding: 0;
+}
+
+
+.feature-panel .x-props-grid .x-grid3-td-name .x-grid3-cell-inner {
+    padding: 5px;
+}

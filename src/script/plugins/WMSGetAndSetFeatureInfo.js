@@ -300,12 +300,38 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             var feature;
             for (var i=0,ii=features.length; i<ii; ++i) {
                 feature = features[i];
-                item = Ext.apply({
+                /*item = Ext.apply({
                     xtype: "propertygrid",
                     height: 150,
                     title: feature.fid ? feature.fid : title,
                     source: feature.attributes
-                }, this.itemConfig);
+                }, this.itemConfig);*/
+                
+                // Set the style for editable / no editable fields
+                var customRendererFields = new Object();
+                for(var attribute in feature.attributes) {
+                    var fieldValue = feature.attributes[attribute];
+                    customRendererFields[attribute] = function(v){
+                            return '<div class="non_editable_field">'+ v +'</div>';
+                        };
+                    for(var j = 0 ; j < feature.attributes_editable.length ; j++) {
+                        if(feature.attributes_editable[j] == attribute) {
+                            customRendererFields[attribute] = function(v){
+                                    return '<div class="editable_field">'+ v +'</div>';
+                                };
+                        }
+                    }
+                }
+                    
+                item = new Ext.grid.PropertyGrid(
+                    {
+                        xtype: "propertygrid",
+                        height: 150,
+                        title: feature.fid ? feature.fid : title,
+                        source: feature.attributes,
+                        customRenderers: customRendererFields
+                    }
+                );
                 config.push(item);
                    
                 // if associated, data grid must be inserted in the right tab
@@ -339,6 +365,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             }, this.itemConfig));
         }
 
+        // Store the attributes for all objects
         var attributes;
         for (var i=0,ii=features.length; i<ii; ++i) {
             feature = features[i];
