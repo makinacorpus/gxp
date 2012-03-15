@@ -43,6 +43,12 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
      */
     infoActionTip: "Get Feature Info",
 
+    /** api: config[infoActionAddTip]
+     *  ``String``
+     *  Text for feature add action tooltip (i18n).
+     */
+    addActionTip: "Add Feature",
+
     /** api: config[format]
      *  ``String`` Either "html" or "grid". If set to "grid", GML will be
      *  requested from the server and displayed in an Ext.PropertyGrid.
@@ -76,7 +82,13 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
      *  ``Object`` OpenLayers select feature control
      */
     controlSelect: null,
-    
+
+        
+    /** api: config[controlAdd]
+     *  ``Object`` OpenLayers add feature control
+     */
+    controlAdd: null,
+
     /** api: config[lastPointClicked]
      *  ``String`` Last point clicked
      */
@@ -87,11 +99,17 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
      */
     highLightLayer: null,
 
-     /** api: config[selectCtrl]
-     *  ``Object` OpenLayers Control for editing features
+     /** api: config[addLayer]
+     *  ``String``  Name of the layer on which we can add features
      */
-    selectCtrl: null,
+    addLayerName: "",
 
+     /** api: config[pointLayer]
+     *  ``Object``  Layer on which we can draw points
+     */
+    pointLayer: "",
+
+    
     /** api: config[vendorParams]
      *  ``Object``
      *  Optional object with properties to be serialized as vendor specific
@@ -122,27 +140,48 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
         app.featureCache = new Array;
 
         if (app.initialConfig.tools_enabled.indexOf("view_attr") == -1)
-            return;
-        
-        var actions = gxp.plugins.WMSGetAndSetFeatureInfo.superclass.addActions.call(this, [{
-            tooltip: this.infoActionTip,
-            iconCls: "gxp-icon-getfeatureinfo",
-            toggleGroup: this.toggleGroup,
-            enableToggle: true,
-            allowDepress: true,
-            toggleHandler: function(button, pressed) {
-                for (var i = 0, len = info.controls.length; i < len; i++){
+            actionEdit = {};
+        else
+            actionEdit = {
+                tooltip: this.infoActionTip,
+                iconCls: "gxp-icon-getfeatureinfo",
+                toggleGroup: this.toggleGroup,
+                enableToggle: true,
+                allowDepress: true,
+                toggleHandler: function(button, pressed) {
                     if (pressed) {
                         app.featuresPanel.expand();
-                        info.controls[i].activate();
+                        this.controlSelect.activate();
                     } else {
                         app.featuresPanel.collapse();
-                        info.controls[i].deactivate();
+                        this.controlSelect.deactivate();
                     }
-                }
-             }
-        }]);
+                },
+                scope: this
+            }
+        if (app.initialConfig.tools_enabled.indexOf("add_feat") == -1)
+            actionAdd = {};
+        else
+            actionAdd = {
+                tooltip: this.addActionTip,
+                iconCls: "gxp-icon-add" + this.addLayerName,
+                toggleGroup: this.toggleGroup,
+                enableToggle: true,
+                allowDepress: true,
+                toggleHandler: function(button, pressed) {
+                    if (pressed) {
+                        app.featuresPanel.expand();
+                        this.controlAdd.activate();
+                    } else {
+                        app.featuresPanel.collapse();
+                        this.controlAdd.deactivate();
+                    }
+                },
+                scope: this
+            }
+        var actions = gxp.plugins.WMSGetAndSetFeatureInfo.superclass.addActions.call(this, [actionEdit, actionAdd]);
         var infoButton = this.actions[0].items[0];
+        var addButton = this.actions[1].items[0];
 
         var info = {controls: []};
         var updateInfo = function() {
@@ -151,14 +190,6 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             });
 
             var map = this.target.mapPanel.map;
-            var control;
-            for (var i = 0, len = info.controls.length; i < len; i++){
-                control = info.controls[i];
-                control.deactivate();  // TODO: remove when http://trac.openlayers.org/ticket/2130 is closed
-                control.destroy();
-            }
-
-            info.controls = [];
             queryableLayers.each(function(x){
                 var layer = x.getLayer();
                 var vendorParams = Ext.apply({}, this.vendorParams), param;
@@ -170,106 +201,80 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 }
                 var infoFormat = x.get("infoFormat");
                 if (infoFormat === undefined) {
-                    // TODO: check if chosen format exists in infoFormats array
-                    // TODO: this will not work for WMS 1.3 (text/xml instead for GML)
                     infoFormat = this.format == "html" ? "text/html" : "application/vnd.ogc.gml";
                 }
-                this.controlSelect = new OpenLayers.Control.WMSGetFeatureInfo(Ext.applyIf({
-                    url: layer.url,
-                    queryVisible: true,
-                    layers: [layer],
-                    infoFormat: infoFormat,
-                    vendorParams: vendorParams,
-                    eventListeners: {
-                        getfeatureinfo: function(evt) {
-                            var title = x.get("title") || x.get("name");
+                if(!this.controlSelect) {
+                    this.controlSelect = new OpenLayers.Control.WMSGetFeatureInfo(Ext.applyIf({
+                        url: layer.url,
+                        queryVisible: true,
+                        layers: [layer],
+                        infoFormat: infoFormat,
+                        vendorParams: vendorParams,
+                        eventListeners: {
+                            getfeatureinfo: function(evt) {
+                                var title = x.get("title") || x.get("name");
 
-                            var pointClicked = evt.xy.x + "." + evt.xy.y;
-                            if(this.lastPointClicked != pointClicked) {
-                                // If another point is clicked, then reset all results
-                                app.featuresTabPanel.removeAll();
-                                delete app.featureCache;				
-                                this.lastPointClicked = pointClicked;
-                            }
+                                var clearCache = false;
+                                var pointClicked = evt.xy.x + "." + evt.xy.y;
+                                if(this.lastPointClicked != pointClicked) {
+                                    // If another point is clicked, then reset all results
+                                    clearCache = true;
+                                    this.lastPointClicked = pointClicked;
+                                }
 
-                            // Get main feature (instead of those retreive by WMS)
-                            var features = evt.features;
-                            if (features) {
-                                var feature;
-                                for (var i=0, ii=features.length; i<ii; ++i) {
-                                    feature = features[i];
-                                    Ext.Ajax.request({
-                                        url: this.urlMainFeatures,
-                                        method: 'POST',
-                                        scope: this,
-                                        params: { object_name :feature.gml.featureType, object_id: feature.fid,
-                                                map_projection: this.target.mapPanel.map.projection.replace("EPSG:","")},
-                                        success: function(response, options) {
-                                        var features = eval('(' + response.responseText + ')');
-                                        this.displayInfos(features, false, '', title);
-                                        },
-                                        failure: function(response, options) {
-                                        Ext.Msg.alert('Error', 'Could not retreive feature\'s attributes.');
-                                        }
-                                    });
-                                }
-                            }
-                            
-                            if(features && features.length == 0) {
-                                // Remove all on highLightLayer
-                                highLightLayers = map.getLayersByName("highLightLayer");
-                                if(highLightLayers.length != 0) {
-                                    this.highLightLayer = highLightLayers[0];
-                                    this.highLightLayer.removeAllFeatures();
-                                }
-                            }
-
-                            /*if (infoFormat == "text/html") {
-                                var match = evt.text.match(/<body[^>]*>([\s\S]*)<\/body>/);
-                                if (match && !match[1].match(/^\s*$/)) {
-                                    this.displayInfos(evt, false, title, match[1]);
-                                }
-                            } else if (infoFormat == "text/plain") {
-                                this.displayInfos(evt, false, '', title, '<pre>' + evt.text + '</pre>');
-                            } else {
-                                this.displayInfos(evt, false, '', title);
-                            }*/
-
-                            // Get associated feature if needed
-                            if(this.urlAssociatedFeatures != "") {
-                                var features = evt.features;
-                                if (features) {
-                                    var feature;
-                                    for (var i=0, ii=features.length; i<ii; ++i) {
-                                        feature = features[i];
-                                        //var id_parent = feature.gml.featureType + feature.fid;
-                                        var id_parent = feature.gml.featureType + feature.fid.replace(feature.gml.featureType+".","");
-                                        Ext.Ajax.request({
-                                            url: this.urlAssociatedFeatures,
-                                            method: 'POST',
-                                            scope: this,
-                                            params: { object_name :feature.gml.featureType, object_id: feature.fid, 
-                                                    map_projection: this.target.mapPanel.map.projection.replace("EPSG:","")},
-                                            success: function(response, options) {
-                                                var features = eval('(' + response.responseText + ')');
-                                                this.displayInfos(features, true, id_parent);
-                                            },
-                                            failure: function(response, options) {
-                                                Ext.Msg.alert('Error', 'Could not retreive associated features.');
-                                            }
-                                        });
-                                    }
-                                }
-                            }
-                        },
-                        scope: this
-                    }
-                }, this.controlOptions));
-                map.addControl(this.controlSelect);
-                info.controls.push(this.controlSelect);
+                                this.getFeaturesInfos(evt.features, title, clearCache);
+                            },
+                            scope: this
+                        }
+                    }, this.controlOptions));
+                    map.addControl(this.controlSelect);
+                }
                 if(infoButton.pressed) {
                     this.controlSelect.activate();
                 }
+            }, this);
+        };
+
+        
+        var updateAdd = function() {
+            var queryableLayers = this.target.mapPanel.layers.queryBy(function(x){
+                return x.get("queryable");
+            });
+
+            var map = this.target.mapPanel.map;
+            queryableLayers.each(function(x){
+                var layer = x.getLayer();
+                if(layer.name == this.addLayerName) {
+                    var drawLayerName = "Drawing layer : " + this.addLayerName;
+                    pointLayers = map.getLayersByName(drawLayerName);
+                    if(pointLayers.length == 0) {
+                        this.pointLayer = new OpenLayers.Layer.Vector(drawLayerName);
+                        map.addLayer(this.pointLayer);
+                    }
+                    else {
+                        this.pointLayer = pointLayers[0];
+                        this.pointLayer.removeAllFeatures();
+                    }
+
+                    if(!this.controlAdd) {
+                        this.controlAdd = new OpenLayers.Control.DrawFeature(this.pointLayer,OpenLayers.Handler.Point);
+                    
+                        this.pointLayer.events.on({
+                                "beforefeatureadded": function(event) {
+                                    this.controlAdd.deactivate();
+                                },
+                                "featureadded": this.endAddFeature,
+                                scope: this
+                        });
+    
+                        map.addControl(this.controlAdd);
+                    }
+                    if(addButton.pressed)
+                        this.controlAdd.activate();
+                    else
+                        this.controlAdd.deactivate();
+                }
+                    
             }, this);
 
         };
@@ -278,9 +283,85 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
         this.target.mapPanel.layers.on("add", updateInfo, this);
         this.target.mapPanel.layers.on("remove", updateInfo, this);
 
+        this.target.mapPanel.layers.on("update", updateAdd, this);
+        this.target.mapPanel.layers.on("add", updateAdd, this);
+        this.target.mapPanel.layers.on("remove", updateAdd, this);
+
         return actions;
     },
 
+    
+    
+    /** private: method[getFeaturesInfos]
+     * :arg features: the features
+     * :arg title: a String to use for the title of the results section 
+     * :arg clearCache: Flag for cleaning cache or not
+     */
+    getFeaturesInfos: function(features, title, clearCache) {
+
+        if(clearCache) {
+            app.featuresTabPanel.removeAll();
+            delete app.featureCache;
+        }
+        
+        var map = this.target.mapPanel.map;
+        // Get main feature (instead of those retreive by WMS)
+        if (features) {
+            var feature;
+            for (var i=0, ii=features.length; i<ii; ++i) {
+                feature = features[i];
+                Ext.Ajax.request({
+                    url: this.urlMainFeatures,
+                    method: 'POST',
+                    scope: this,
+                    params: { object_name :feature.gml.featureType, object_id: feature.fid,
+                            map_projection: this.target.mapPanel.map.projection.replace("EPSG:","")},
+                    success: function(response, options) {
+                    var features = eval('(' + response.responseText + ')');
+                        this.displayInfos(features, false, '', title);
+                    },
+                    failure: function(response, options) {
+                        Ext.Msg.alert('Error', 'Could not retreive feature\'s attributes.');
+                    }
+                });
+            }
+        }
+        
+        if(features && features.length == 0) {
+            // Remove all on highLightLayer
+            highLightLayers = map.getLayersByName("highLightLayer");
+            if(highLightLayers.length != 0) {
+                this.highLightLayer = highLightLayers[0];
+                this.highLightLayer.removeAllFeatures();
+            }
+        }
+
+        // Get associated feature if needed
+        if(this.urlAssociatedFeatures != "") {
+            if (features) {
+                var feature;
+                for (var i=0, ii=features.length; i<ii; ++i) {
+                    feature = features[i];
+                    var id_parent = feature.gml.featureType + feature.fid.replace(feature.gml.featureType+".","");
+                    Ext.Ajax.request({
+                        url: this.urlAssociatedFeatures,
+                        method: 'POST',
+                        scope: this,
+                        params: { object_name :feature.gml.featureType, object_id: feature.fid, 
+                                map_projection: this.target.mapPanel.map.projection.replace("EPSG:","")},
+                        success: function(response, options) {
+                            var features = eval('(' + response.responseText + ')');
+                            this.displayInfos(features, true, id_parent);
+                        },
+                        failure: function(response, options) {
+                            Ext.Msg.alert('Error', 'Could not retreive associated features.');
+                        }
+                    });
+                }
+            }
+        }
+    },
+    
     /** private: method[displayInfos]
      * :arg features: the features
      * :arg associated: indicate if we are displaying request feature, or associated features
@@ -300,13 +381,6 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             var feature;
             for (var i=0,ii=features.length; i<ii; ++i) {
                 feature = features[i];
-                /*item = Ext.apply({
-                    xtype: "propertygrid",
-                    height: 150,
-                    title: feature.fid ? feature.fid : title,
-                    source: feature.attributes
-                }, this.itemConfig);*/
-                
                 // Set the style for editable / no editable fields
                 var customRendererFields = new Object();
                 for(var attribute in feature.attributes) {
@@ -335,10 +409,9 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 delete item.getStore().sortInfo; // Remove default sorting
                 item.getColumnModel().getColumnById('name').sortable = false; // set sorting of first column to false
                 item.setSource(feature.attributes); // Now load data
-                
-                
+
                 config.push(item);
-                   
+
                 // if associated, data grid must be inserted in the right tab
                 if(associated) {
                     // Search for the good tab
@@ -350,7 +423,8 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 if(!associated) {
                     key = feature.table_name + feature.fid;   
                     newTab = {
-                        title: key,
+                        //title: key,
+                        title: feature.table_name,
                         id: key,
                         layout: "accordion",
                         autoScroll:true,
@@ -435,16 +509,6 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             }
             
             if (app.initialConfig.tools_enabled.indexOf("edit_geom") != -1) {
-                // Enable geometry editing
-                /*this.selectCtrl = new OpenLayers.Control.SelectFeature(this.highLightLayer, {clickout: false});
-                this.highLightLayer.events.on({
-                    featureselected: function(e) {
-                        this.editGeomFeaturePopup(e.feature);
-                    },
-                    scope: this
-                });
-                map.addControl(this.selectCtrl);
-                this.selectCtrl.activate();*/
                 modifyCtrl = new OpenLayers.Control.ModifyFeature(this.highLightLayer)
                 map.addControl(modifyCtrl);
                 modifyCtrl.activate();
@@ -500,13 +564,15 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                             }
                             
                             if(modifiedOk) {
-                                Ext.Msg.alert('Error', 'Geometry saved successfuly.');
+                                Ext.Msg.alert('Success', 'Geometry saved successfuly.');
                                 // Refresh layers
                                 for(i = 0; i < this.target.mapPanel.map.layers.length ; i++) {
                                     currentLayer = this.target.mapPanel.map.layers[i];
                                     if(!currentLayer.isBaseLayer && currentLayer.visibility)
                                         currentLayer.redraw(true);
                                 }
+                                
+                                // TODO : edit attributes immediatly
                             }
                         },
                         failure: function(response, options) {
@@ -517,46 +583,69 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             }
         });
         // Reactivate select control
-        this.controlSelect.activate();
-        
+        this.controlSelect.activate();   
     },
-
-    /** private: method[editGeomFeaturePopup]
-     * :arg feature: the feature to modify
+    
+     /** private: method[endAddFeature]
+     * :arg event: processed when feature has been added
      */    
-    editGeomFeaturePopup: function(feature) {
-        /*var schema = new GeoExt.data.AttributeStore({
-            data: [{name: "foo", type: "xsd:string"}, {name: "altitude", type: "xsd:int"}, {name: "startdate", type: "xsd:date"}]
-        });*/
-        /*popup = new gxp.FeatureEditPopup({
-            editorPluginConfig: {ptype: "gxp_editorform", labelWidth: 50, defaults: {width: 100}, bodyStyle: "padding: 5px 5px 0"},
-            feature: feature,
-            schema: schema,
-            width: 200,
-            height: 150,
-            collapsible: true,
-            listeners: {
-                close: function(){
-                    // unselect feature when the popup is closed
-                    if(this.highLightLayer.selectedFeatures.indexOf(this.feature) > -1) {
-                        this.selectCtrl.unselect(this.feature);
-                    }
-                },
-                featuremodified: function() {
-                    alert("You have modified the feature.");
+    endAddFeature : function(event) {
+        var wkt = event.feature.geometry.toString();
+
+        var featureTab = new Array;
+        var attributes = {'geom' : wkt};
+        attributes.table_name = this.addLayerName;
+        attributes.user_name = app.user;
+        featureTab.push(attributes);
+
+        jsonDataEncode = Ext.util.JSON.encode(featureTab);
+        var msg = "Confirm the add";
+        Ext.Msg.show({
+            title:'Confirmation',
+            msg: msg,
+            buttons: Ext.Msg.YESNO,
+            scope: this,
+            fn: function(btn) {
+                if(btn == "yes" || btn == "oui") {
+                    Ext.Ajax.request({
+                        url: this.urlAddGeomFeatures,
+                        method: 'POST',
+                        scope: this,
+                        params: { object_name : this.addLayerName, source: app.user, map_projection: this.target.mapPanel.map.projection.replace("EPSG:",""),
+                            data: jsonDataEncode
+                        },
+                        success: function(response, options) {
+                            var modifiedOk = true;
+                            if(response.responseText) {
+                                status = eval('(' + response.responseText + ')');
+                                if(status.records[0].status == false) {
+                                    Ext.Msg.alert('Information', status.records[0].msg);
+                                    modifiedOk = false;
+                                }
+                            }
+                            
+                            if(modifiedOk) {
+                                Ext.Msg.alert('Success', 'Feature added successfuly.');
+                                // Refresh layers
+                                for(i = 0; i < this.target.mapPanel.map.layers.length ; i++) {
+                                    currentLayer = this.target.mapPanel.map.layers[i];
+                                    if(!currentLayer.isBaseLayer && currentLayer.visibility)
+                                        currentLayer.redraw(true);
+                                }
+                            }
+                        },
+                        failure: function(response, options) {
+                            Ext.Msg.alert('Error', 'Could not add feature.');
+                        }
+                    });
                 }
+                this.pointLayer.removeAllFeatures();
             }
         });
-        popup.show();*/
-        /*controls = {
-            modify: new OpenLayers.Control.ModifyFeature(vectors)
-        };            
-        for(var key in controls) {
-            map.addControl(controls[key]);
-        }*/
+        // Reactivate add control
+        this.controlAdd.activate();   
+    }   
 
-        
-    }    
 
 });
 

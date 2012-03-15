@@ -311,3 +311,7 @@ div.map-overlay div.overlay-element {
 .feature-panel .x-props-grid .x-grid3-td-name .x-grid3-cell-inner {
     padding: 5px;
 }
+
+.x-btn .gxp-icon-addl49, .x-menu-item .gxp-icon-addl49 {
+    background-image: url(img/silk/pencil_add_work.png);
+}
