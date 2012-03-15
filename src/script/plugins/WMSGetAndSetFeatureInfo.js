@@ -328,10 +328,15 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                         xtype: "propertygrid",
                         height: 150,
                         title: feature.fid ? feature.fid : title,
-                        source: feature.attributes,
+                        //source: feature.attributes,
                         customRenderers: customRendererFields
                     }
                 );
+                delete item.getStore().sortInfo; // Remove default sorting
+                item.getColumnModel().getColumnById('name').sortable = false; // set sorting of first column to false
+                item.setSource(feature.attributes); // Now load data
+                
+                
                 config.push(item);
                    
                 // if associated, data grid must be inserted in the right tab
