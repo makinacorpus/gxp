@@ -170,10 +170,10 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 allowDepress: true,
                 toggleHandler: function(button, pressed) {
                     if (pressed) {
-                        app.featuresPanel.expand();
+                        //app.featuresPanel.expand();
                         this.controlAdd.activate();
                     } else {
-                        app.featuresPanel.collapse();
+                        //app.featuresPanel.collapse();
                         this.controlAdd.deactivate();
                     }
                 },
@@ -402,7 +402,6 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                         xtype: "propertygrid",
                         height: 150,
                         title: feature.fid ? feature.fid : title,
-                        //source: feature.attributes,
                         customRenderers: customRendererFields
                     }
                 );
