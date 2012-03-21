@@ -99,6 +99,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
      *  ``Object`` OpenLayers select feature control
      */
     controlSelect: null,
+    tabControlSelect: null,
 
         
     /** api: config[controlAdd]
@@ -156,6 +157,8 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
     addActions: function() {
         app.featureCache = new Array;
 
+        this.tabControlSelect = {};
+        
         if (app.initialConfig.tools_enabled.indexOf("view_attr") == -1)
             actionEdit = {};
         else
@@ -166,12 +169,14 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 enableToggle: true,
                 allowDepress: true,
                 toggleHandler: function(button, pressed) {
-                    if (pressed) {
-                        app.featuresPanel.expand();
-                        this.controlSelect.activate();
-                    } else {
-                        app.featuresPanel.collapse();
-                        this.controlSelect.deactivate();
+                    for (currentControl in this.tabControlSelect){
+                        if (pressed) {
+                            app.featuresPanel.expand();
+                            this.tabControlSelect[currentControl].activate();
+                        } else {
+                            app.featuresPanel.collapse();
+                            this.tabControlSelect[currentControl].deactivate();
+                        }
                     }
                 },
                 scope: this
@@ -187,10 +192,8 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 allowDepress: true,
                 toggleHandler: function(button, pressed) {
                     if (pressed) {
-                        //app.featuresPanel.expand();
                         this.controlAdd.activate();
                     } else {
-                        //app.featuresPanel.collapse();
                         this.controlAdd.deactivate();
                     }
                 },
@@ -220,8 +223,9 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 if (infoFormat === undefined) {
                     infoFormat = this.format == "html" ? "text/html" : "application/vnd.ogc.gml";
                 }
-                if(!this.controlSelect) {
-                    this.controlSelect = new OpenLayers.Control.WMSGetFeatureInfo(Ext.applyIf({
+                
+                if(!this.tabControlSelect[layer.name]) {
+                    this.tabControlSelect[layer.name] = new OpenLayers.Control.WMSGetFeatureInfo(Ext.applyIf({
                         url: layer.url,
                         queryVisible: true,
                         layers: [layer],
@@ -244,10 +248,10 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                             scope: this
                         }
                     }, this.controlOptions));
-                    map.addControl(this.controlSelect);
+                    map.addControl(this.tabControlSelect[layer.name]);
                 }
                 if(infoButton.pressed) {
-                    this.controlSelect.activate();
+                    this.tabControlSelect[layer.name].activate();
                 }
             }, this);
         };
@@ -532,7 +536,9 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 this.highLightLayer.events.on({
                         "beforefeaturemodified": function(event) {
                             // Deactivate select control to prevent from deselecting feature
-                            this.controlSelect.deactivate();
+                            for (currentControl in this.tabControlSelect){
+                                this.tabControlSelect[currentControl].deactivate();
+                            }
                         },
                         "afterfeaturemodified": this.endEditFeature,
                         scope: this
@@ -599,7 +605,11 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
             }
         });
         // Reactivate select control
-        this.controlSelect.activate();   
+        for (currentControl in this.tabControlSelect){
+            this.tabControlSelect[currentControl].activate();
+        }
+
+
     },
     
      /** private: method[endAddFeature]
@@ -617,8 +627,8 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
         jsonDataEncode = Ext.util.JSON.encode(featureTab);
         //var msg = "Confirm the add";
         Ext.Msg.show({
-            title: this.confirmMsgAddGeom,
-            msg: msg,
+            title: this.addActionTip,
+            msg: this.confirmMsgAddGeom,
             buttons: Ext.Msg.YESNO,
             scope: this,
             fn: function(btn) {

@@ -163,7 +163,8 @@ GeoExt.Lang.add("fr", {
         successMsgfeatureAdded : "L'objet a été correctement ajouté.",
         errorMsgfeatureAdded: "Impossible d'ajouter l'objet.",
         confirmMsgModifGeom: "Confirmer la modification de géométrie ( ",
-        confirmMsgAddGeom: "Confirmer l'ajout"
+        confirmMsgAddGeom: "Confirmer l'ajout",
+        addActionTip: "Ajouter un objet"
     },
 
     "gxp.plugins.Zoom.prototype": {
