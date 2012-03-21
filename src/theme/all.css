@@ -207,6 +207,11 @@
     background-image: url(img/silk/magnifier_zoom_out.png);
 }
 
+/* gxp_zoombox */
+.x-btn .gxp-icon-zoombox, .x-tree-node .gxp-icon-zoombox {
+    background-image: url("img/silk/magnifier_zoom_box.png");
+}
+
 /* gxp_measure */
 .x-btn .gxp-icon-measure-length, .x-menu-item .gxp-icon-measure-length, .x-tree-node .gxp-icon-measure-length {
     background-image: url(img/geosilk/ruler.png) !important;
