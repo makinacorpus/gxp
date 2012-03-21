@@ -151,9 +151,19 @@ GeoExt.Lang.add("fr", {
 
 
     "gxp.plugins.WMSGetAndSetFeatureInfo.prototype": {
-        infoActionTip: "Récupérer les attributs des objets",
-        popupTitle: "Info sur l'objet",
-        saveFeatureText: "Sauver"
+        infoActionTip: "Consulter et mettre à jour les objets",
+        popupTitle: "Infos sur l'objet",
+        saveFeatureText: "Sauver",
+        errorTitle: "Erreur",
+        errorMsgRetreiveAttributes: "Impossible de récupérer les attributs.",
+        errorMsgRetreiveAssociatedAttributes: "Impossible de récupérer les attributs des objets associés.",
+        successTitle: "Succès",
+        successMsgGeomSaved: "La géométrie a été enregistrée.",
+        errorMsgGeomSaved: "Impossible d'enregistrer la géométrie.",
+        successMsgfeatureAdded : "L'objet a été correctement ajouté.",
+        errorMsgfeatureAdded: "Impossible d'ajouter l'objet.",
+        confirmMsgModifGeom: "Confirmer la modification de géométrie ( ",
+        confirmMsgAddGeom: "Confirmer l'ajout"
     },
 
     "gxp.plugins.Zoom.prototype": {

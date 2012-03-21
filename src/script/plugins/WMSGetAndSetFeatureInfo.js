@@ -49,6 +49,23 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
      */
     addActionTip: "Add Feature",
 
+    
+    /** api: config[]
+     *  ``String``
+     *  Other text msgs
+     */
+    errorTitle: "Error",
+    errorMsgRetreiveAttributes: "Could not retreive feature's attributes.",
+    errorMsgRetreiveAssociatedAttributes: "Could not retreive associated features.",
+    successTitle: "Success",
+    successMsgGeomSaved: "Geometry saved successfuly.",
+    errorMsgGeomSaved: "Could not save geometry.",
+    successMsgfeatureAdded : "Feature added successfuly.",
+    errorMsgfeatureAdded: "Could not add feature.",
+    confirmMsgModifGeom: "Confirm the geometric modification ( ",
+    confirmMsgAddGeom: "Confirm the add",
+
+    
     /** api: config[format]
      *  ``String`` Either "html" or "grid". If set to "grid", GML will be
      *  requested from the server and displayed in an Ext.PropertyGrid.
@@ -321,7 +338,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                         this.displayInfos(features, false, '', title);
                     },
                     failure: function(response, options) {
-                        Ext.Msg.alert('Error', 'Could not retreive feature\'s attributes.');
+                        Ext.Msg.alert(this.errorTitle, this.errorMsgRetreiveAttributes);
                     }
                 });
             }
@@ -354,7 +371,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                             this.displayInfos(features, true, id_parent);
                         },
                         failure: function(response, options) {
-                            Ext.Msg.alert('Error', 'Could not retreive associated features.');
+                            Ext.Msg.alert(this.errorTitle, this.errorMsgRetreiveAssociatedAttributes);
                         }
                     });
                 }
@@ -537,7 +554,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
         featureTab.push(attributes);
 
         jsonDataEncode = Ext.util.JSON.encode(featureTab);
-        var msg = "Confirm the geometric modification ( " + event.feature.attributes.table_name + " [ "+ event.feature.attributes.id + " ] )";
+        var msg = this.confirmMsgModifGeom + event.feature.attributes.table_name + " [ "+ event.feature.attributes.id + " ] )";
         Ext.Msg.show({
             title:'Confirmation',
             msg: msg,
@@ -563,7 +580,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                             }
                             
                             if(modifiedOk) {
-                                Ext.Msg.alert('Success', 'Geometry saved successfuly.');
+                                Ext.Msg.alert(this.successTitle, this.successMsgGeomSaved);
                                 // Refresh layers
                                 for(i = 0; i < this.target.mapPanel.map.layers.length ; i++) {
                                     currentLayer = this.target.mapPanel.map.layers[i];
@@ -575,7 +592,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                             }
                         },
                         failure: function(response, options) {
-                            Ext.Msg.alert('Error', 'Could not save geometry.');
+                            Ext.Msg.alert(this.errorTitle, this.errorMsgGeomSaved);
                         }
                     });
                 }
@@ -598,9 +615,9 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
         featureTab.push(attributes);
 
         jsonDataEncode = Ext.util.JSON.encode(featureTab);
-        var msg = "Confirm the add";
+        //var msg = "Confirm the add";
         Ext.Msg.show({
-            title:'Confirmation',
+            title: this.confirmMsgAddGeom,
             msg: msg,
             buttons: Ext.Msg.YESNO,
             scope: this,
@@ -624,7 +641,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                             }
                             
                             if(modifiedOk) {
-                                Ext.Msg.alert('Success', 'Feature added successfuly.');
+                                Ext.Msg.alert(this.successTitle, this.successMsgfeatureAdded);
                                 // Refresh layers
                                 for(i = 0; i < this.target.mapPanel.map.layers.length ; i++) {
                                     currentLayer = this.target.mapPanel.map.layers[i];
@@ -634,7 +651,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                             }
                         },
                         failure: function(response, options) {
-                            Ext.Msg.alert('Error', 'Could not add feature.');
+                            Ext.Msg.alert(this.errorTitle, this.errorMsgfeatureAdded);
                         }
                     });
                 }
@@ -644,7 +661,6 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
         // Reactivate add control
         this.controlAdd.activate();   
     }   
-
 
 });
 
