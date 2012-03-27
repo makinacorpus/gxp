@@ -329,6 +329,11 @@ GeoExt.Lang.add("fr", {
 
     "gxp.ScaleOverlay.prototype": { 
         zoomLevelText: "Niveau de zoom"
+    },
+
+    "gxp.menu.LayerMenuSortable.prototype": {
+        upText: "Monter",
+        downText: "Descendre"
     }
 
 });
