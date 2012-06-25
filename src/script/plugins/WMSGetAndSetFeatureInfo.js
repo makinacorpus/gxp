@@ -443,8 +443,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 if(!associated) {
                     key = feature.table_name + feature.fid;   
                     newTab = {
-                        //title: key,
-                        title: feature.table_name,
+                        title: feature.table_label,
                         id: key,
                         layout: "accordion",
                         autoScroll:true,
