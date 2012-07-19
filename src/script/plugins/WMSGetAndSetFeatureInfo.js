@@ -372,7 +372,9 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                                 map_projection: this.target.mapPanel.map.projection.replace("EPSG:","")},
                         success: function(response, options) {
                             var features = eval('(' + response.responseText + ')');
-                            this.displayInfos(features, true, id_parent);
+                            
+                            local_id_parent  = options.params.object_id.replace(".","");
+                            this.displayInfos(features, true, local_id_parent);
                         },
                         failure: function(response, options) {
                             Ext.Msg.alert(this.errorTitle, this.errorMsgRetreiveAssociatedAttributes);
