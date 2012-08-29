@@ -423,7 +423,8 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 item = new Ext.grid.PropertyGrid(
                     {
                         xtype: "propertygrid",
-                        height: 150,
+                        height: 250,
+                        cls: 'feature-item',
                         title: feature.fid ? feature.fid : title,
                         customRenderers: customRendererFields
                     }
@@ -447,6 +448,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                     newTab = {
                         title: feature.table_label,
                         id: key,
+                        cls: 'attributes',
                         layout: "accordion",
                         autoScroll:true,
                         items: [item]
