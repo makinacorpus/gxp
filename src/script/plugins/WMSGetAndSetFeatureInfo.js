@@ -373,7 +373,7 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                         success: function(response, options) {
                             var features = eval('(' + response.responseText + ')');
                             
-                            local_id_parent  = options.params.object_id.replace(".","");
+                            local_id_parent  = "tab_" + options.params.object_id.replace(".","");
                             this.displayInfos(features, true, local_id_parent);
                         },
                         failure: function(response, options) {
@@ -419,14 +419,24 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                         }
                     }
                 }
-                    
+                var className = "feature-item";
+                if(associated) {
+                    if(feature.sub_level == 2)
+                        className = "feature-subitem-lvl1"
+                    if(feature.sub_level > 2)
+                        className = "feature-subitem-lvl2"
+                }
+                
                 item = new Ext.grid.PropertyGrid(
                     {
                         xtype: "propertygrid",
                         height: 250,
-                        cls: 'feature-item',
+                        cls: className,
                         title: feature.fid ? feature.fid : title,
-                        customRenderers: customRendererFields
+                        customRenderers: customRendererFields,
+                        id: feature.table_name + feature.fid,
+                        collapsible:true,
+                        titleCollapse: true
                     }
                 );
                 delete item.getStore().sortInfo; // Remove default sorting
@@ -436,15 +446,25 @@ gxp.plugins.WMSGetAndSetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                 config.push(item);
 
                 // if associated, data grid must be inserted in the right tab
+                // And in the right sub-accordion
                 if(associated) {
                     // Search for the good tab
-                    app.featuresTabPanel.getItem(parentKey).add(item);
-                    app.featuresTabPanel.doLayout();
+                    if(feature.sub_level == 1) {
+                        app.featuresTabPanel.getItem(parentKey).add(item);
+                        app.featuresTabPanel.doLayout();
+                    }
+                    else {
+                        // Search for the good accordion, and add the subitem (for subitem level > 1)
+                        var parentComponent = Ext.getCmp(feature.parent);
+                        var indexParent = parentComponent.ownerCt.items.indexOf(parentComponent);
+                        app.featuresTabPanel.getItem(parentKey).insert(indexParent + 1, item);
+                        app.featuresTabPanel.doLayout();
+                    }
                 }
 
                 // if main object , create a new tab in the tabPanel
                 if(!associated) {
-                    key = feature.table_name + feature.fid;   
+                    key = "tab_" + feature.table_name + feature.fid;   
                     newTab = {
                         title: feature.table_label,
                         id: key,
