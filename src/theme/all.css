@@ -184,6 +184,10 @@
 .x-btn .gxp-icon-save, .x-menu-item .gxp-icon-save { 
     background-image: url(img/silk/save.png);
 }
+/* gxp_delfeature */
+.x-btn .gxp-icon-del, .x-menu-item .gxp-icon-del {
+    background-image: url("img/silk/delete.png");
+}
 
 
 /* gxp_zoomtoextent */
