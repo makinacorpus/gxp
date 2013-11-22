@@ -532,16 +532,7 @@ gxp.Viewer = Ext.extend(Ext.util.Observable, {
                             var today = new Date();
                             var sixMonthsBeforeToday = new Date(new Date(today).setMonth(today.getMonth() - 6));
                             var sixMonthsBeforeTodayString = sixMonthsBeforeToday.getFullYear() + "-" + (sixMonthsBeforeToday.getMonth()+1) + "-" + sixMonthsBeforeToday.getDate()
-                            var filter = new OpenLayers.Filter.Comparison({
-                                type: OpenLayers.Filter.Comparison.GREATER_THAN,
-                                property: "date_fin",
-                                value: sixMonthsBeforeTodayString // today - 6 month
-                            });
-                            var parser = new OpenLayers.Format.Filter.v1_1_0();
-                            var filterAsXml = parser.write(filter);
-                            var xml = new OpenLayers.Format.XML();
-                            var filterAsString = xml.write(filterAsXml);
-                            layer.params["FILTER"] = filterAsString;
+                            layer.mergeNewParams({'CQL_FILTER': "date_fin > '"+sixMonthsBeforeTodayString + "' OR date_fin IS NULL"});
                         }
                     }
                     //
