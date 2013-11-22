@@ -525,6 +525,27 @@ gxp.Viewer = Ext.extend(Ext.util.Observable, {
                 // source may not have loaded properly (failure handled elsewhere)
                 if (source) {
                     record = source.createLayerRecord(conf);
+                    // sbe - hack for special L49 layer, add filter on date
+                    if (record) {
+                        layer = record.getLayer();
+                        if(layer.name == "l49") {
+                            var today = new Date();
+                            var sixMonthsBeforeToday = new Date(new Date(today).setMonth(today.getMonth() - 6));
+                            var sixMonthsBeforeTodayString = sixMonthsBeforeToday.getFullYear() + "-" + (sixMonthsBeforeToday.getMonth()+1) + "-" + sixMonthsBeforeToday.getDate()
+                            var filter = new OpenLayers.Filter.Comparison({
+                                type: OpenLayers.Filter.Comparison.GREATER_THAN,
+                                property: "date_fin",
+                                value: sixMonthsBeforeTodayString // today - 6 month
+                            });
+                            var parser = new OpenLayers.Format.Filter.v1_1_0();
+                            var filterAsXml = parser.write(filter);
+                            var xml = new OpenLayers.Format.XML();
+                            var filterAsString = xml.write(filterAsXml);
+                            layer.params["FILTER"] = filterAsString;
+                        }
+                    }
+                    //
+                    
                     if (record) {
                         if (record.get("group") === "background") {
                             baseRecords.push(record);
